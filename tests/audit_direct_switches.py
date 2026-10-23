@@ -21,16 +21,22 @@ from possessed import pipeline as pl  # noqa: E402
 CHALLENGE_N = pl.CHALLENGE_N
 
 
-def traced_state_machine(raw_team, dead, fallback):
-    """Exact copy of pipeline.state_machine (default challenge_n) plus a per-frame cause log.
+def traced_state_machine(raw_team, dead, fallback, feats=None, ev=None, transition=None,
+                         ball_known=None):
+    """Mirror of pipeline.state_machine (default/adaptive path) plus a per-frame cause log.
 
     cause[t] records why labels[t] took the value it did when the STATE changed:
-      streak40        - opposing signal persisted CHALLENGE_N (the sanctioned switch)
+      streak40        - opposing signal persisted the adaptive threshold + dual-bracket gate
+      transition_eff  - challenger adopted from a TRANSITION prior with a raw-unknown signal
       seed_prior      - restart prior adopted at a dead-interval end (post-D, bracketed)
       adopt_signal    - state NOBODY adopted the first known signal (post-D/edge or fallback)
       fallback_hold   - state NOBODY emitted the smooth50 fallback letter (alive) -> INCUMBENT
       dead            - D frame (state reset to NOBODY)
       same/none       - no state change
+    Reproduces the adaptive machine exactly: N_eff thresholds, mid-flight freeze,
+    ambiguous-X policy, transition unlock during unknown-ball blocks — then the same
+    same-letter X-restore pass as the pipeline. kill_blips is applied afterwards so the
+    traced labels can be asserted byte-identical to the shipped submission.
     """
     dmask = np.zeros(pl.N_FRAMES, dtype=bool)
     prior_at = {}
@@ -41,6 +47,41 @@ def traced_state_machine(raw_team, dead, fallback):
     labels = np.full(pl.N_FRAMES, "X", dtype="<U1")
     cause = np.full(pl.N_FRAMES, "", dtype=object)
     letter = {pl.HOME: "H", pl.AWAY: "A"}
+    dist, sup = feats["dist"], feats["sup"]
+    ball_kmh, speed_ok = feats["ball_kmh"], feats["speed_ok"]
+    vx_sign, atk = feats["vx_sign"], feats["atk"]
+    trans = transition
+    known = ball_known
+
+    def ambiguous(t):
+        if not known[t]:
+            return False  # matches pipeline: missing evidence holds the letter
+        d0, d1 = dist[t, pl.HOME], dist[t, pl.AWAY]
+        if np.isnan(d0) or np.isnan(d1):
+            return True
+        m = abs(d0 - d1)
+        s = int(sup[t, pl.HOME]) - int(sup[t, pl.AWAY])
+        return m < pl.AMBIG_MARGIN and s == 0
+
+    def n_eff(t, chal):
+        if trans is not None and trans[t] == chal:
+            return pl.CHALLENGE_FAST
+        if not known[t]:
+            return pl.CHALLENGE_SLOW
+        d0, d1 = dist[t, pl.HOME], dist[t, pl.AWAY]
+        if np.isnan(d0) or np.isnan(d1):
+            return pl.CHALLENGE_SLOW
+        if (d0 if chal == pl.HOME else d1) + pl.ADV_LARGE <= (d0 if chal == pl.AWAY else d1):
+            return pl.CHALLENGE_FAST
+        if speed_ok[t] and ball_kmh[t] >= pl.FAST_KMH and vx_sign[t] != 0:
+            if vx_sign[t] * atk[t, chal] > 0:
+                return pl.CHALLENGE_FAST
+        if ev is not None and abs(ev[t, pl.HOME] - ev[t, pl.AWAY]) < 1e-6:
+            return pl.CHALLENGE_SLOW
+        if d0 < 0.0 or d1 < 0.0:
+            return pl.CHALLENGE_SLOW
+        return pl.CHALLENGE_N
+
     for start, stop in pl.GRADED_RUNS:
         state = pl.NOBODY
         streak_team, streak = pl.NOBODY, 0
@@ -55,56 +96,93 @@ def traced_state_machine(raw_team, dead, fallback):
                 t += 1
                 continue
             sig = int(raw_team[t])
+            eff_sig = sig
+            eff_from_trans = False
+            if eff_sig == pl.NOBODY and trans is not None and trans[t] != pl.NOBODY:
+                eff_sig = int(trans[t])
+                eff_from_trans = True
             if state == pl.NOBODY:
                 if t in prior_at:
                     state = prior_at[t]
                     streak_team, streak = pl.NOBODY, 0
                     spell_start = t
                     cause[t] = "seed_prior"
-                elif sig != pl.NOBODY:
-                    state = sig
+                elif eff_sig != pl.NOBODY:
+                    state = eff_sig
                     streak_team, streak = pl.NOBODY, 0
                     spell_start = t
-                    cause[t] = "adopt_signal"
+                    cause[t] = ("transition_eff" if eff_from_trans else "adopt_signal")
                 else:
                     labels[t] = fallback[t]
                     cause[t] = ("fallback_hold" if fallback[t] in ("H", "A")
                                 else "fallback_d")
                     t += 1
                     continue
-            if sig != pl.NOBODY and sig != state:
-                if sig == streak_team:
+            switched = False
+            if eff_sig != pl.NOBODY and eff_sig != state:
+                if eff_sig == streak_team:
                     streak += 1
                 else:
-                    streak_team, streak = sig, 1
-                if streak >= CHALLENGE_N:
-                    # same dual-bracket gate as pipeline.state_machine
-                    if (t - spell_start >= CHALLENGE_N
-                            and t + CHALLENGE_N <= stop
-                            and not dmask[t:t + CHALLENGE_N].any()):
-                        state = sig
+                    streak_team, streak = eff_sig, 1
+                need = n_eff(t, eff_sig)
+                mid_flight = (speed_ok[t] and ball_kmh[t] >= pl.FAST_KMH
+                              and streak_team != pl.NOBODY)
+                if streak >= need and not mid_flight:
+                    if (t - spell_start >= pl.CHALLENGE_N
+                            and t + pl.CHALLENGE_N <= stop
+                            and not dmask[t:t + pl.CHALLENGE_N].any()):
+                        state = eff_sig
                         streak_team, streak = pl.NOBODY, 0
                         spell_start = t
-                        cause[t] = "streak40"
+                        switched = True
+                        cause[t] = ("transition_eff" if eff_from_trans else "streak40")
             else:
                 streak_team, streak = pl.NOBODY, 0
                 if not cause[t]:
                     cause[t] = "hold"
-            labels[t] = letter[state]
+            if switched:
+                labels[t] = letter[state]
+            elif ambiguous(t) and (trans is None or trans[t] == pl.NOBODY
+                                   or trans[t] == state):
+                labels[t] = "X"
+            else:
+                labels[t] = letter[state]
             t += 1
+    # same-letter X-restore pass (mirrors pipeline.state_machine)
+    for start, stop in pl.GRADED_RUNS:
+        i = start
+        while i < stop:
+            if labels[i] == "X":
+                j = i
+                while j < stop and labels[j] == "X":
+                    j += 1
+                if i > start and j < stop and labels[i - 1] == labels[j] \
+                        and labels[i - 1] in ("H", "A"):
+                    labels[i:j] = labels[i - 1]
+                i = j
+            else:
+                i += 1
+    labels = pl.kill_blips(labels)
     return labels, cause
 
 
 def main():
     labels = H.read_labels(H.SUBMISSION)
     built, dead, filled, fallback, events, raw = pl.build_full(verbose=False)
-    # ball visibility (raw track) for context
+    # re-derive the adaptive machine's inputs (identical to build_full's default path)
     paths = pl.resolve(None)
-    team_of, _ = pl.load_teams(paths["atd_meta"])
-    ball_xy, raw_team = pl.stream_atd(paths["atd_raw"], team_of)
+    team_of, name_map, gk_mask, dir_first = pl.load_teams(paths["atd_meta"])
+    ball_xy, player_xy, _raw_team = pl.stream_atd(paths["atd_raw"], team_of)
     visible = ~np.isnan(ball_xy[:, 0])
+    gk_slots = np.flatnonzero(gk_mask)
+    feats = pl.pitch_features(pl.fill_ball(ball_xy)[0], player_xy, team_of, gk_mask, gk_slots)
+    phase_vote, box_vote, transition = pl.phase_priors(events)
+    ev = pl.evidence_model(feats, phase_vote, box_vote, visible)
+    feats["atk"] = pl.attack_dirs(dir_first)
+    ball_known = ~np.isnan(feats["dist"][:, pl.HOME]) | ~np.isnan(feats["dist"][:, pl.AWAY])
 
-    traced, cause = traced_state_machine(filled, dead, fallback)
+    traced, cause = traced_state_machine(filled, dead, fallback, feats=feats, ev=ev,
+                                         transition=transition, ball_known=ball_known)
     assert "".join(traced) == "".join(labels), "trace diverges from shipped labels"
 
     sp_windows = [(e["start"], e["end"]) for e in events if e["code"] == pl.SP_CODE]

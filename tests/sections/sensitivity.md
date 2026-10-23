@@ -9,4 +9,4 @@ CHALLENGE_N | window s | poss H1/H2 (total) | mean s | median s | D share | macr
 75 | 3.0s | 99/106 (205) | 25.0 | 18.3 | 0.1532 | 0.6691 | 0.4533
 
 * public-window diagnostics only; not a tuning signal.
-Reading: possession count spans 205..855 across the grid; N=40 sits at 183/176 per half. Structural plausibility (roughly 40-60/half, mean 12-18 s) holds around the shipped N; the score columns move within a band and are reported without acting on them.
+Reading: possession count spans 205..855 across the grid; the legacy N=40 row sits at 183/176 per half. The shipped default is the ADAPTIVE machine (mean spell ~12-16 s vs the 14.19 s structural anchor), so the legacy grid only shows the knob's direction; score columns move within a band and are reported without acting on them.

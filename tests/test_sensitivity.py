@@ -41,9 +41,12 @@ def test_sweep_runs_and_reports(sweep):
     # monotonic structure: larger challenge window => fewer possessions (sanity of the knob)
     poss = [by_n[n]["poss_h1"] + by_n[n]["poss_h2"] for n in GRID]
     assert poss == sorted(poss, reverse=True), poss
-    # N=40 row must match the full default variant
-    assert by_n[40]["poss_h1"] == H.structural_stats(
-        H.read_labels(H.SUBMISSION))["possessions"][0]
+    # The sweep's N rows run the LEGACY flat-window machine (challenge_n given); the
+    # shipped default is the adaptive machine, so row-for-row equality no longer holds.
+    # Sanity instead: the shipped adaptive default sits inside the legacy sweep's band.
+    default_h1 = H.structural_stats(H.read_labels(H.SUBMISSION))["possessions"][0]
+    assert by_n[75]["poss_h1"] < default_h1 < by_n[15]["poss_h1"], \
+        (by_n[75]["poss_h1"], default_h1, by_n[15]["poss_h1"])
 
     lines = ["CHALLENGE_N | window s | poss H1/H2 (total) | mean s | median s | D share | "
              "macroF1* | spellF1*",
@@ -58,10 +61,11 @@ def test_sweep_runs_and_reports(sweep):
     narrow = by_n[15]["poss_h1"] + by_n[15]["poss_h2"]
     wide = by_n[75]["poss_h1"] + by_n[75]["poss_h2"]
     cur = by_n[40]
-    lines.append("Reading: possession count spans {}..{} across the grid; N=40 sits at "
-                 "{}/{} per half. Structural plausibility (roughly 40-60/half, mean 12-18 s) "
-                 "holds around the shipped N; the score columns move within a band and are "
-                 "reported without acting on them.".format(
+    lines.append("Reading: possession count spans {}..{} across the grid; the legacy "
+                 "N=40 row sits at {}/{} per half. The shipped default is the ADAPTIVE "
+                 "machine (mean spell ~12-16 s vs the 14.19 s structural anchor), so the "
+                 "legacy grid only shows the knob's direction; score columns move within "
+                 "a band and are reported without acting on them.".format(
                      wide, narrow, cur["poss_h1"], cur["poss_h2"]))
     report = "## CHALLENGE_N sensitivity sweep\n\n" + "\n".join(lines) + "\n"
     H.json_dump(sweep, os.path.join(H.RESULTS_DIR, "sensitivity_rows.json"))
