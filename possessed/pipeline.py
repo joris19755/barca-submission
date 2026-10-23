@@ -506,7 +506,8 @@ def _legacy_state_machine(raw_team, dead, fallback, challenge_n):
 
 
 def state_machine(raw_team, dead, fallback, challenge_n=None, feats=None, ev=None,
-                  transition=None, ball_known=None, ambi_out=None):
+                  transition=None, ball_known=None, ambi_out=None,
+                  challenge_band=None, x_margin=None):
     """Asymmetric hysteresis possession machine -> label array.
 
     challenge_n given  -> legacy flat-window machine (ablation/sweeps only).
@@ -522,9 +523,15 @@ def state_machine(raw_team, dead, fallback, challenge_n=None, feats=None, ev=Non
       * metric-aligned labels: ambiguous team evidence inside an alive possession emits X
         (never a coin flip); dead frames always D; ambiguous DEAD frames are D too (never X).
     ambi_out: optional bool array, set True on frames where ambiguity produced X (tracing).
+    challenge_band: optional (fast, slow) override of the adaptive threshold band
+        (default CHALLENGE_FAST/CHALLENGE_SLOW; (40, 40) = flat control).
+    x_margin: optional AMBIG_MARGIN override for the X safety valve (stricter = smaller).
     """
     if challenge_n is not None:
         return _legacy_state_machine(raw_team, dead, fallback, challenge_n)
+    fast_n, slow_n = challenge_band if challenge_band is not None \
+        else (CHALLENGE_FAST, CHALLENGE_SLOW)
+    ambig_m = x_margin if x_margin is not None else AMBIG_MARGIN
     dmask = np.zeros(N_FRAMES, dtype=bool)
     prior_at = {}
     for a, b, p in dead:
@@ -566,27 +573,27 @@ def state_machine(raw_team, dead, fallback, challenge_n=None, feats=None, ev=Non
             return True
         m = abs(d0 - d1)
         s = int(sup[t, HOME]) - int(sup[t, AWAY])
-        return m < AMBIG_MARGIN and s == 0
+        return m < ambig_m and s == 0
 
     def n_eff(t, chal, inc):
         """Adaptive streak threshold for a challenger at frame t."""
         if trans is not None and trans[t] == chal:
-            return CHALLENGE_FAST
+            return fast_n
         if not known[t]:
-            return CHALLENGE_SLOW
+            return slow_n
         d0, d1 = dist[t, HOME], dist[t, AWAY]
         if np.isnan(d0) or np.isnan(d1):
-            return CHALLENGE_SLOW
+            return slow_n
         if (d0 if chal == HOME else d1) + ADV_LARGE <= (d0 if chal == AWAY else d1):
-            return CHALLENGE_FAST  # large metric-distance advantage
+            return fast_n  # large metric-distance advantage
         if speed_ok[t] and ball_kmh[t] >= FAST_KMH and vx_sign[t] != 0:
             # ball travelling toward the goal the challenger attacks this half
             if vx_sign[t] * atk[t, chal] > 0:
-                return CHALLENGE_FAST
+                return fast_n
         if eva is not None and abs(eva[t, HOME] - eva[t, AWAY]) < 1e-6:
-            return CHALLENGE_SLOW  # evidence tied -> ambiguous stretch
+            return slow_n  # evidence tied -> ambiguous stretch
         if d0 < 0.0 or d1 < 0.0:  # unreachable; keeps types honest
-            return CHALLENGE_SLOW
+            return slow_n
         return CHALLENGE_N
 
     for start, stop in GRADED_RUNS:
@@ -740,12 +747,17 @@ def build(data_dir=None, verbose=True):
 
 
 def build_full(data_dir=None, verbose=True, smart_dead=True, ball_fill=True,
-               challenge_n=None):
+               challenge_n=None, challenge_band=None, phase_prior=True, x_margin=None):
     """Full build with ablation switches (defaults reproduce the shipped pipeline exactly).
 
     smart_dead=False discards Smart Tagging -> no D intervals and no restart priors;
     ball_fill=False skips linear ball interpolation; challenge_n overrides the hysteresis
     window (challenge_n <= 1 = raw nearest, no hysteresis) and selects the legacy machine.
+    Ensemble-grid knobs (adaptive machine only; defaults reproduce shipped behavior):
+      challenge_band=(fast, slow): adaptive streak-threshold band, e.g. (30, 50);
+        (40, 40) = flat control (threshold always CHALLENGE_N).
+      phase_prior=False: drop phase-tag soft votes and transition switch-priors.
+      x_margin: AMBIG_MARGIN override for the X safety valve (stricter = smaller).
     Returns (labels, dead_intervals, filled_team_signal, smooth50_fallback, events, raw_team).
     """
     paths = resolve(data_dir)
@@ -810,13 +822,17 @@ def build_full(data_dir=None, verbose=True, smart_dead=True, ball_fill=True,
         gk_slots = np.flatnonzero(gk_mask)
         feats = pitch_features(filled, player_xy, team_of, gk_mask, gk_slots)
         phase_vote, box_vote, transition = phase_priors(events)
+        if not phase_prior:
+            phase_vote = np.zeros_like(phase_vote)
+            transition = None
         ev = evidence_model(feats, phase_vote, box_vote, visible)
         feats["atk"] = attack_dirs(dir_first)
         ball_known_ev = ~np.isnan(feats["dist"][:, HOME]) | ~np.isnan(feats["dist"][:, AWAY])
         ambi = np.zeros(N_FRAMES, dtype=bool)
         labels = state_machine(filled_team, dead, fallback, challenge_n=None,
                                feats=feats, ev=ev, transition=transition,
-                               ball_known=ball_known_ev, ambi_out=ambi)
+                               ball_known=ball_known_ev, ambi_out=ambi,
+                               challenge_band=challenge_band, x_margin=x_margin)
         if verbose:
             print("pitch features: ambig-X frames {:,} ({:.1%} of all)".format(
                 int(ambi.sum()), ambi.mean()))
@@ -836,9 +852,33 @@ def main(argv=None):
                          "(default: $MTAH_DATA_DIR, then ./data)")
     ap.add_argument("--challenge-n", type=int, default=None,
                     help="override hysteresis window in frames (default: adaptive; testing only)")
+    ap.add_argument("--challenge-band", default=None, metavar="FAST,SLOW",
+                    help="adaptive streak-threshold band in frames, e.g. 30,50 or 40,40 "
+                         "for a flat control (default: 20,60; testing only)")
+    ap.add_argument("--no-phase-prior", action="store_true",
+                    help="drop phase-tag soft votes and transition switch-priors "
+                         "(default: on; testing only)")
+    ap.add_argument("--x-margin", type=float, default=None, metavar="M",
+                    help="X safety-valve ambiguity margin in metres: stricter = smaller "
+                         "(default: 2.0; testing only)")
     args = ap.parse_args(argv)
-    labels = build(args.data_dir) if args.challenge_n is None else build_full(
-        data_dir=args.data_dir, challenge_n=args.challenge_n)[0]
+    band = None
+    if args.challenge_band:
+        try:
+            f, s = (int(x) for x in args.challenge_band.split(","))
+            band = (f, s)
+        except ValueError:
+            ap.error("--challenge-band must be FAST,SLOW integers")
+    adaptive = (args.challenge_n is None and
+                (band is not None or args.no_phase_prior or args.x_margin is not None))
+    if args.challenge_n is not None:
+        labels = build_full(data_dir=args.data_dir, challenge_n=args.challenge_n)[0]
+    elif adaptive:
+        labels = build_full(data_dir=args.data_dir, challenge_band=band,
+                            phase_prior=not args.no_phase_prior,
+                            x_margin=args.x_margin)[0]
+    else:
+        labels = build(args.data_dir)
     st = structural_stats(labels)
     print("label shares:", {k: round(v, 3) for k, v in st["shares"].items()})
     print("possessions per half:", st["possessions"],

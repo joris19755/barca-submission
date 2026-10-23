@@ -1,0 +1,242 @@
+{
+  "band_10_80": {
+    "knobs": {
+      "challenge_band": [
+        10,
+        80
+      ]
+    },
+    "macro_f1": 0.659,
+    "md5": "a2a5c3fed902d631e19d411c6a571763",
+    "mean_s": [
+      14.71,
+      13.99
+    ],
+    "median_s": [
+      7.96,
+      8.64
+    ],
+    "poss_h1": 170,
+    "poss_h2": 187,
+    "possessions": 357,
+    "shares": {
+      "A": 0.2984,
+      "D": 0.1532,
+      "H": 0.3434,
+      "X": 0.205
+    },
+    "spell_f1": 0.3895,
+    "variant": "band_10_80",
+    "violations": 0,
+    "x_inside_runs": 0.0025
+  },
+  "band_30_50": {
+    "knobs": {
+      "challenge_band": [
+        30,
+        50
+      ]
+    },
+    "macro_f1": 0.6644,
+    "md5": "373682543931cf447b955a1dc6439c2e",
+    "mean_s": [
+      13.9,
+      14.7
+    ],
+    "median_s": [
+      7.84,
+      8.54
+    ],
+    "poss_h1": 180,
+    "poss_h2": 178,
+    "possessions": 358,
+    "shares": {
+      "A": 0.3017,
+      "D": 0.1532,
+      "H": 0.3402,
+      "X": 0.2049
+    },
+    "spell_f1": 0.4105,
+    "variant": "band_30_50",
+    "violations": 0,
+    "x_inside_runs": 0.0023
+  },
+  "base": {
+    "knobs": {},
+    "macro_f1": 0.664,
+    "md5": "81a9a48c1b42132b68f09f1247fb8305",
+    "mean_s": [
+      13.98,
+      14.37
+    ],
+    "median_s": [
+      7.76,
+      9.08
+    ],
+    "poss_h1": 179,
+    "poss_h2": 182,
+    "possessions": 361,
+    "shares": {
+      "A": 0.3037,
+      "D": 0.1532,
+      "H": 0.3381,
+      "X": 0.2049
+    },
+    "spell_f1": 0.4,
+    "variant": "base",
+    "violations": 0,
+    "x_inside_runs": 0.0024
+  },
+  "combo_30_50_phaseoff": {
+    "knobs": {
+      "challenge_band": [
+        30,
+        50
+      ],
+      "phase_prior": false
+    },
+    "macro_f1": 0.6642,
+    "md5": "867aa796c203a64a9c607c74567db0a8",
+    "mean_s": [
+      14.06,
+      14.86
+    ],
+    "median_s": [
+      7.96,
+      9.12
+    ],
+    "poss_h1": 178,
+    "poss_h2": 176,
+    "possessions": 354,
+    "shares": {
+      "A": 0.304,
+      "D": 0.1532,
+      "H": 0.3379,
+      "X": 0.2049
+    },
+    "spell_f1": 0.4105,
+    "variant": "combo_30_50_phaseoff",
+    "violations": 0,
+    "x_inside_runs": 0.0024
+  },
+  "combo_30_50_phaseoff_x1": {
+    "knobs": {
+      "challenge_band": [
+        30,
+        50
+      ],
+      "phase_prior": false,
+      "x_margin": 1.0
+    },
+    "macro_f1": 0.6643,
+    "md5": "5c85ed2d903f64dfdaff08a608a7efa3",
+    "mean_s": [
+      14.08,
+      14.88
+    ],
+    "median_s": [
+      7.96,
+      9.14
+    ],
+    "poss_h1": 178,
+    "poss_h2": 176,
+    "possessions": 354,
+    "shares": {
+      "A": 0.3045,
+      "D": 0.1532,
+      "H": 0.3384,
+      "X": 0.2039
+    },
+    "spell_f1": 0.4105,
+    "variant": "combo_30_50_phaseoff_x1",
+    "violations": 0,
+    "x_inside_runs": 0.0011
+  },
+  "flat_40": {
+    "knobs": {
+      "challenge_band": [
+        40,
+        40
+      ]
+    },
+    "macro_f1": 0.6651,
+    "md5": "095cf987a7efd019f354e2ae844066de",
+    "mean_s": [
+      13.83,
+      15.03
+    ],
+    "median_s": [
+      7.64,
+      8.98
+    ],
+    "poss_h1": 181,
+    "poss_h2": 174,
+    "possessions": 355,
+    "shares": {
+      "A": 0.3026,
+      "D": 0.1532,
+      "H": 0.3394,
+      "X": 0.2048
+    },
+    "spell_f1": 0.4105,
+    "variant": "flat_40",
+    "violations": 0,
+    "x_inside_runs": 0.0023
+  },
+  "phase_off": {
+    "knobs": {
+      "phase_prior": false
+    },
+    "macro_f1": 0.6632,
+    "md5": "d4f6bba178cc4c8d9d2e8f536883e340",
+    "mean_s": [
+      14.46,
+      14.53
+    ],
+    "median_s": [
+      7.76,
+      9.14
+    ],
+    "poss_h1": 173,
+    "poss_h2": 180,
+    "possessions": 353,
+    "shares": {
+      "A": 0.3084,
+      "D": 0.1532,
+      "H": 0.3334,
+      "X": 0.205
+    },
+    "spell_f1": 0.4,
+    "variant": "phase_off",
+    "violations": 0,
+    "x_inside_runs": 0.0025
+  },
+  "x_1.0": {
+    "knobs": {
+      "x_margin": 1.0
+    },
+    "macro_f1": 0.6641,
+    "md5": "c691bd27da4c01b1022918d857b738ce",
+    "mean_s": [
+      14.0,
+      14.39
+    ],
+    "median_s": [
+      7.8,
+      9.12
+    ],
+    "poss_h1": 179,
+    "poss_h2": 182,
+    "possessions": 361,
+    "shares": {
+      "A": 0.3042,
+      "D": 0.1532,
+      "H": 0.3387,
+      "X": 0.2039
+    },
+    "spell_f1": 0.4,
+    "variant": "x_1.0",
+    "violations": 0,
+    "x_inside_runs": 0.0012
+  }
+}
