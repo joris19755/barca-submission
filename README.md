@@ -33,14 +33,29 @@ One line, from the repository root:
 MTAH_DATA_DIR=/path/to/match-bundle python -m possessed --out barca.csv
 ```
 
+- **Expected output:** `barca.csv` — header plus exactly **199,319 data rows**
+  (`frame,label`) ≈1.9 MB, md5 `81a9a48c1b42132b68f09f1247fb8305` (byte-identical on any
+  machine with the pinned versions).
 - The data root is taken from `--data-dir /path/to/match-bundle` if you prefer the flag over
   the environment variable; both follow the official bundle layout, i.e. the inputs live at
   `<data_dir>/tactical/BAR-ATH_tactical_*` (a flat `<data_dir>/BAR-ATH_tactical_*` also
   works).
-- **Expected output:** `barca.csv` — header plus exactly **199,319 data rows**
-  (`frame,label`), ≈1.9 MB.
-- The run is deterministic: regenerating on another machine with the same pinned versions
-  produces a byte-identical file.
+- Optional knobs (defaults = the shipped run, all documented as testing-only):
+  `--challenge-band FAST,SLOW` (default `20,60`), `--no-phase-prior` (default: prior on),
+  `--x-margin M` (default `2.0`), `--challenge-n N` (default: adaptive).
+
+### Tests and audit
+
+```bash
+MTAH_DATA_DIR=/path/to/match-bundle python -m pytest tests -q   # 12 tests
+MTAH_DATA_DIR=/path/to/match-bundle python tests/audit_direct_switches.py   # → tests/_results/
+```
+
+### Documentation
+
+`docs/` — `metric_leverage.md` (which eval metrics a single frame can move and how much),
+`data_audit.md` (untapped signals in the MTAH 2027 bundle), `ensemble_selection.md` (the
+8-run grid over the new knobs and why the shipped defaults won).
 
 Before submitting, check it with the official validator from the competition repo:
 
