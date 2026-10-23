@@ -28,7 +28,7 @@ BASELINE_SMOOTH125 = os.path.join(MTAH, "evaluation", "results", "baseline_smoot
 GRADED_RUNS = ((11185, 90652), (110808, 190198))
 PUBLIC_WINDOW = (11185, 18685)   # half-open, the 7500-frame public slice
 N_FRAMES = 199319
-SHIPPED_MD5 = "8486d8aadfed5a7466f5a0e8ba785820"
+SHIPPED_MD5 = "911d935da9e8abc7acaf8aa6e1aa098b"
 FPS = 25
 
 sys.path.insert(0, REPO_ROOT)                   # so `import possessed` works from tests

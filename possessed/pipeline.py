@@ -266,6 +266,7 @@ def state_machine(raw_team, dead, fallback, challenge_n=None):
     for start, stop in GRADED_RUNS:
         state = NOBODY
         streak_team, streak = NOBODY, 0
+        spell_start = start  # frame where the incumbent spell began (for the switch gate)
         t = start
         while t < stop:
             if dmask[t]:
@@ -279,9 +280,11 @@ def state_machine(raw_team, dead, fallback, challenge_n=None):
                 if t in prior_at:
                     state = prior_at[t]
                     streak_team, streak = NOBODY, 0
+                    spell_start = t
                 elif sig != NOBODY:
                     state = sig
                     streak_team, streak = NOBODY, 0
+                    spell_start = t
                 else:
                     labels[t] = fallback[t]
                     t += 1
@@ -294,9 +297,23 @@ def state_machine(raw_team, dead, fallback, challenge_n=None):
                 if challenge_n <= 1:  # no hysteresis: raw signal wins immediately
                     state = sig
                     streak_team, streak = NOBODY, 0
+                    spell_start = t
                 elif streak >= challenge_n:
-                    state = sig
-                    streak_team, streak = NOBODY, 0
+                    # Invariant by design: a direct switch joins two spells, neither of which is
+                    # D/edge-bracketed at the switch, so BOTH must be >= challenge_n frames long,
+                    # or one of them would be a short unbracketed spell. Execute the switch only
+                    # when (1) the incumbent spell has already lasted >= challenge_n frames and
+                    # (2) no D frame or run edge occurs within challenge_n frames after t, which
+                    # guarantees the new spell lasts >= challenge_n frames (any later direct
+                    # switch is re-checked by condition 1 at its own time). Otherwise the
+                    # incumbent holds — the challenge signal stays pending and is re-evaluated
+                    # every subsequent frame.
+                    if (t - spell_start >= challenge_n
+                            and t + challenge_n <= stop
+                            and not dmask[t:t + challenge_n].any()):
+                        state = sig
+                        streak_team, streak = NOBODY, 0
+                        spell_start = t
             else:
                 streak_team, streak = NOBODY, 0
             labels[t] = letter[state]

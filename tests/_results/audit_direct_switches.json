@@ -1,0 +1,25 @@
+{
+  "context_counts": {
+    "ball_invisible_3_before": 0,
+    "ball_known_at_entry": 0,
+    "ball_unknown_at_entry": 0,
+    "entry_after_seed_prior": 0,
+    "exit_is_D": 0,
+    "exit_is_direct": 0,
+    "exit_is_run_edge": 0,
+    "in_goal_window": 0,
+    "in_set_piece_window": 0
+  },
+  "half_dist": {
+    "1": 0,
+    "2": 0
+  },
+  "known_example_65253": [],
+  "length_hist": {},
+  "length_max": null,
+  "length_mean": null,
+  "length_min": null,
+  "signature_groups": {},
+  "total_violations": 0,
+  "violations": []
+}
