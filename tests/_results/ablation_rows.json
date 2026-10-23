@@ -1,0 +1,54 @@
+{
+  "full_default": {
+    "a_share": 0.3044,
+    "d_share": 0.1532,
+    "h_share": 0.3394,
+    "macro_f1": 0.6671,
+    "mean_s": 14.1,
+    "median_s": 8.2,
+    "n_pred_spells": 21,
+    "poss_h1": 184,
+    "poss_h2": 179,
+    "spell_f1": 0.4211,
+    "x_share": 0.203
+  },
+  "no_ball_fill": {
+    "a_share": 0.3086,
+    "d_share": 0.1532,
+    "h_share": 0.3352,
+    "macro_f1": 0.6671,
+    "mean_s": 15.4,
+    "median_s": 8.8,
+    "n_pred_spells": 21,
+    "poss_h1": 166,
+    "poss_h2": 168,
+    "spell_f1": 0.4211,
+    "x_share": 0.203
+  },
+  "no_hysteresis": {
+    "a_share": 0.3095,
+    "d_share": 0.1532,
+    "h_share": 0.3342,
+    "macro_f1": 0.6159,
+    "mean_s": 2.8,
+    "median_s": 1.0,
+    "n_pred_spells": 128,
+    "poss_h1": 918,
+    "poss_h2": 919,
+    "spell_f1": 0.0441,
+    "x_share": 0.203
+  },
+  "no_smart_dead": {
+    "a_share": 0.351,
+    "d_share": 0.0,
+    "h_share": 0.446,
+    "macro_f1": 0.5196,
+    "mean_s": 18.6,
+    "median_s": 10.2,
+    "n_pred_spells": 22,
+    "poss_h1": 181,
+    "poss_h2": 162,
+    "spell_f1": 0.4103,
+    "x_share": 0.203
+  }
+}

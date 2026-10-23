@@ -248,8 +248,13 @@ def smooth50(raw_team):
     return labels
 
 
-def state_machine(raw_team, dead, fallback):
-    """Hysteresis possession machine; returns a label array over all frames."""
+def state_machine(raw_team, dead, fallback, challenge_n=None):
+    """Hysteresis possession machine; returns a label array over all frames.
+
+    challenge_n overrides CHALLENGE_N (ablation/testing only; default keeps shipped behaviour).
+    """
+    if challenge_n is None:
+        challenge_n = CHALLENGE_N
     dmask = np.zeros(N_FRAMES, dtype=bool)
     prior_at = {}
     for a, b, p in dead:
@@ -286,7 +291,10 @@ def state_machine(raw_team, dead, fallback):
                     streak += 1
                 else:
                     streak_team, streak = sig, 1
-                if streak >= CHALLENGE_N:
+                if challenge_n <= 1:  # no hysteresis: raw signal wins immediately
+                    state = sig
+                    streak_team, streak = NOBODY, 0
+                elif streak >= challenge_n:
                     state = sig
                     streak_team, streak = NOBODY, 0
             else:
@@ -334,6 +342,20 @@ def write_submission(path, labels):
 
 
 def build(data_dir=None, verbose=True):
+    """Default pipeline (all stages on) -> full-length label array."""
+    labels, _, _, _, _, _ = build_full(data_dir=data_dir, verbose=verbose)
+    return labels
+
+
+def build_full(data_dir=None, verbose=True, smart_dead=True, ball_fill=True,
+               challenge_n=None):
+    """Full build with ablation switches (defaults reproduce the shipped pipeline exactly).
+
+    smart_dead=False discards Smart Tagging -> no D intervals and no restart priors (pure
+    tracking); ball_fill=False skips linear ball interpolation; challenge_n overrides the
+    hysteresis window (challenge_n <= 1 = raw nearest, no hysteresis).
+    Returns (labels, dead_intervals, filled_team_signal, smooth50_fallback, events, raw_team).
+    """
     paths = resolve(data_dir)
     team_of, name_map = load_teams(paths["atd_meta"])
     if verbose:
@@ -342,11 +364,17 @@ def build(data_dir=None, verbose=True):
     visible = ~np.isnan(ball_xy[:, 0])
     if verbose:
         print("ball visible: {:.1%}".format(visible.mean()))
-    filled, n_gaps = fill_ball(ball_xy)
-    if verbose:
-        print("filled gaps <= {} frames: {}".format(MAX_GAP, n_gaps))
+    if ball_fill:
+        filled, n_gaps = fill_ball(ball_xy)
+        if verbose:
+            print("filled gaps <= {} frames: {}".format(MAX_GAP, n_gaps))
+    else:
+        filled = ball_xy  # ablation: no interpolation, gaps stay NaN
     events = load_smart(paths["smart"], name_map)
-    dead = dead_intervals(events, visible, visible)
+    if smart_dead:
+        dead = dead_intervals(events, visible, visible)
+    else:
+        dead = []
     if verbose:
         n_sp = sum(1 for e in events if e["code"] == SP_CODE)
         frames_d = sum(b - a for a, b, _ in dead)
@@ -354,36 +382,39 @@ def build(data_dir=None, verbose=True):
               "{:.1%} of frames D".format(len(events), n_sp, len(dead),
                                           frames_d / N_FRAMES))
     fallback = smooth50(raw_team)
-    # frames where the ball stayed unknown for > MAX_GAP are NOBODY (long-unknown territory)
-    known = np.flatnonzero(raw_team != NOBODY)
-    filled_team = raw_team.copy()
-    if len(known):
-        cur = NOBODY
-        for f in range(N_FRAMES):
-            if raw_team[f] != NOBODY:
-                cur = raw_team[f]
-            elif visible[f]:
-                continue  # visible ball but no tracked player: leave NOBODY
-            else:
-                filled_team[f] = cur
-        nxt = NOBODY
-        for f in range(N_FRAMES - 1, -1, -1):
-            if raw_team[f] != NOBODY:
-                nxt = raw_team[f]
-            elif not visible[f] and filled_team[f] == NOBODY:
-                filled_team[f] = nxt
-        # do not trust a held team across a long unknown stretch: reset the hold after
-        # MAX_GAP consecutive frames without any raw signal
-        run = 0
-        for f in range(N_FRAMES):
-            if raw_team[f] == NOBODY:
-                run += 1
-                if run > MAX_GAP:
-                    filled_team[f] = NOBODY
-            else:
-                run = 0
-    labels = state_machine(filled_team, dead, fallback)
-    return labels
+    if ball_fill:
+        # frames where the ball stayed unknown for > MAX_GAP are NOBODY (long-unknown territory)
+        known = np.flatnonzero(raw_team != NOBODY)
+        filled_team = raw_team.copy()
+        if len(known):
+            cur = NOBODY
+            for f in range(N_FRAMES):
+                if raw_team[f] != NOBODY:
+                    cur = raw_team[f]
+                elif visible[f]:
+                    continue  # visible ball but no tracked player: leave NOBODY
+                else:
+                    filled_team[f] = cur
+            nxt = NOBODY
+            for f in range(N_FRAMES - 1, -1, -1):
+                if raw_team[f] != NOBODY:
+                    nxt = raw_team[f]
+                elif not visible[f] and filled_team[f] == NOBODY:
+                    filled_team[f] = nxt
+            # do not trust a held team across a long unknown stretch: reset the hold after
+            # MAX_GAP consecutive frames without any raw signal
+            run = 0
+            for f in range(N_FRAMES):
+                if raw_team[f] == NOBODY:
+                    run += 1
+                    if run > MAX_GAP:
+                        filled_team[f] = NOBODY
+                else:
+                    run = 0
+    else:
+        filled_team = raw_team  # ablation: no ball fill -> raw signal only
+    labels = state_machine(filled_team, dead, fallback, challenge_n=challenge_n)
+    return labels, dead, filled_team, fallback, events, raw_team
 
 
 def main(argv=None):
@@ -394,8 +425,12 @@ def main(argv=None):
     ap.add_argument("--data-dir", "--data", dest="data_dir", default=None,
                     help="match-data bundle root containing tactical/BAR-ATH_tactical_* "
                          "(default: $MTAH_DATA_DIR, then ./data)")
+    ap.add_argument("--challenge-n", type=int, default=None,
+                    help="override hysteresis window in frames (default: {}; testing only)"
+                         .format(CHALLENGE_N))
     args = ap.parse_args(argv)
-    labels = build(args.data_dir)
+    labels = build(args.data_dir) if args.challenge_n is None else build_full(
+        data_dir=args.data_dir, challenge_n=args.challenge_n)[0]
     st = structural_stats(labels)
     print("label shares:", {k: round(v, 3) for k, v in st["shares"].items()})
     print("possessions per half:", st["possessions"],
