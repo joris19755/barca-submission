@@ -1,0 +1,22 @@
+# Match data — never committed (not redistributable)
+data/
+mtah-data/
+*.mp4
+*_atd.txt
+*_atd.xml
+*_smart_tagging.xml
+*_homography.csv
+
+# Generated outputs — regenerate with the README command instead
+barca.csv
+*.csv
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# OS / editor
+.DS_Store
