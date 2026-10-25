@@ -57,4 +57,6 @@ delta is < 0.08 (bootstrap σ) and therefore noise.
 **Outcome: current default wins; no change to the shipped pipeline defaults.**
 The new knobs (`--challenge-band`, `--no-phase-prior`, `--x-margin`, and the matching
 `build_full` keyword arguments) remain available for future sweeps and default to the
-shipped behavior — verified byte-identical (md5 `81a9a48c1b42132b68f09f1247fb8305`).
+shipped behavior — verified byte-identical at the time of this grid (md5
+`81a9a48c1b42132b68f09f1247fb8305`). The pipeline has since received the second-review
+fixes; the current shipped file is md5 `96a8d91e50d7c0631bad520ac1fe927b` (see README).

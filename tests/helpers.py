@@ -18,25 +18,60 @@ WORKSPACE = os.path.dirname(REPO_ROOT)          # chat workspace root
 RESULTS_DIR = os.path.join(TESTS_DIR, "_results")
 SECTIONS_DIR = os.path.join(TESTS_DIR, "sections")
 CACHE_DIR = os.path.join(TESTS_DIR, "_cache")
-MTAH = os.path.join(WORKSPACE, "mtah-2027")
-SUBMISSION = os.path.join(WORKSPACE, "submissions", "barca.csv")
+# reproducibility fix (b): the sibling directories are NOT assumed. Data and official
+# artefacts are located via env vars (or the workspace layout when it exists); tests
+# that need them SKIP cleanly with a clear message so the packaged repo runs standalone.
+MTAH = os.environ.get("MTAH_REPO_DIR") or (
+    os.path.join(WORKSPACE, "mtah-2027")
+    if os.path.isdir(os.path.join(WORKSPACE, "mtah-2027")) else None)
+SUBMISSION = os.environ.get(
+    "BARCA_SUBMISSION_CSV") or os.path.join(WORKSPACE, "submissions", "barca.csv")
+if not os.path.isfile(SUBMISSION) and os.path.isfile(
+        os.path.join(REPO_ROOT, "barca.csv")):
+    SUBMISSION = os.path.join(REPO_ROOT, "barca.csv")   # standalone: repo's own copy
 REPO_SUBMISSION = os.path.join(REPO_ROOT, "barca.csv")
-PUBLIC_GT = os.path.join(MTAH, "evaluation", "gt", "BAR-ATH_possession_gt_public.csv")
-BASELINE_SMOOTH125 = os.path.join(MTAH, "evaluation", "results", "baseline_smooth125.csv")
+
+
+def have_mtah():
+    """True when the official mtah-2027 evaluation repo is locatable (see MTAH above)."""
+    return bool(MTAH) and os.path.isdir(os.path.join(MTAH, "evaluation"))
+
+
+def require_mtah():
+    """Skip the calling test with a clear message when mtah-2027 is absent."""
+    import pytest
+    if not have_mtah():
+        pytest.skip("mtah-2027 not found: set MTAH_REPO_DIR=/path/to/mtah-2027 "
+                    "(or keep it as a sibling of this repo) to run the official-scorer "
+                    "tests; the packaged repository runs standalone without it")
+
+
+if have_mtah():
+    PUBLIC_GT = os.path.join(MTAH, "evaluation", "gt", "BAR-ATH_possession_gt_public.csv")
+    BASELINE_SMOOTH125 = os.path.join(MTAH, "evaluation", "results",
+                                       "baseline_smooth125.csv")
+    sys.path.insert(0, os.path.join(MTAH, "evaluation"))
+else:
+    PUBLIC_GT = None
+    BASELINE_SMOOTH125 = None
 # H1 and H2 graded spans, from possession_metrics.valid_runs docstring (whole match);
 # the public GT only covers the first 7500 frames of H1.
 GRADED_RUNS = ((11185, 90652), (110808, 190198))
 PUBLIC_WINDOW = (11185, 18685)   # half-open, the 7500-frame public slice
 N_FRAMES = 199319
-SHIPPED_MD5 = "81a9a48c1b42132b68f09f1247fb8305"
+# expected md5 of the regenerated submission; overridable via BARCA_EXPECTED_MD5 when
+# the shipped file was (re)generated with different pipeline fixes. The in-repo default
+# is refreshed whenever the submission is regenerated.
+SHIPPED_MD5 = os.environ.get(
+    "BARCA_EXPECTED_MD5", "96a8d91e50d7c0631bad520ac1fe927b")
 FPS = 25
 
 sys.path.insert(0, REPO_ROOT)                   # so `import possessed` works from tests
-sys.path.insert(0, os.path.join(MTAH, "evaluation"))
 
 
 def load_pm():
     """Official possession_metrics module, imported read-only from mtah-2027."""
+    require_mtah()
     spec = importlib.util.spec_from_file_location(
         "pm_under_test", os.path.join(MTAH, "evaluation", "possession_metrics.py"))
     module = importlib.util.module_from_spec(spec)
@@ -62,9 +97,14 @@ def md5_file(path):
 
 def write_labels_csv(labels, path):
     """Byte-format identical to pipeline.write_submission (header + i,label lines)."""
-    with open(path, "w") as handle:
+    import csv
+    if hasattr(labels, "tolist"):
+        labels = labels.tolist()
+    # reproducibility fix (a): pinned line endings for cross-platform identical bytes
+    with open(path, "w", newline="\n") as handle:
         handle.write("frame,label\n")
-        handle.writelines("{},{}\n".format(i, lab) for i, lab in enumerate(labels))
+        writer = csv.writer(handle, lineterminator="\n")
+        writer.writerows((i, lab) for i, lab in enumerate(labels))
     return path
 
 
@@ -73,6 +113,7 @@ def score(labels, gt_codes=None, pm=None):
     if pm is None:
         pm = load_pm()
     if gt_codes is None:
+        require_mtah()
         gt_codes = pm.label_codes(pm.read_label_csv(PUBLIC_GT))
     return pm.evaluate(gt_codes, pm.label_codes(labels))
 

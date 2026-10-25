@@ -23,9 +23,11 @@ Architecture (deterministic, numpy + stdlib only, no GT used for tuning):
 5. Asymmetric challenge: the incumbent holds until opposing evidence persists, but the streak
    threshold adapts — 20 frames when the challenger's metric-distance advantage is large, the
    transition prior names it, or ball velocity points at its side; 60 frames in ambiguous
-   stretches; 40 (CHALLENGE_N) otherwise. The STRUCTURAL gate still requires both joined spells
-   to be >= CHALLENGE_N or D/edge-bracketed, so the bracketing invariant (audit_direct_switches
-   = 0) is preserved by construction.
+   stretches; 40 (CHALLENGE_N) otherwise. The challenge CANDIDATE is chosen by the combined
+   evidence (distance + superiority + phase votes); the nearest-player signal is only the
+   tie-break, and segment length is a SOFT preference — far from a stoppage a switch needs
+   both joined spells >= CHALLENGE_N (bracketing invariant, audit_direct_switches = 0);
+   close to a stoppage, sustained evidence (or the fast band) may switch right up to it.
 6. Metric-aligned label policy: genuinely ambiguous team evidence inside an alive possession emits
    X (spellF1-safe: forward-fill keeps the spell intact) instead of a coin flip; transition
    frames COMMIT the new label (machine switch); dead frames are always D, never X; alive runs
@@ -40,6 +42,7 @@ the legacy N=40 row at 183+176), used as a descriptive structural diagnostic onl
 """
 
 import argparse
+import csv
 import os
 import sys
 import xml.etree.ElementTree as ET
@@ -61,7 +64,7 @@ HOME, AWAY, NOBODY = 0, 1, -1
 
 # --- parameters (chosen structurally, not on the public GT) ---
 MAX_GAP = 50          # 2 s: interpolate ball gaps up to this; longer stays unknown
-CHALLENGE_N = 40       # 1.6 s: structural gate (both spells >= this or D/edge-bracketed)
+CHALLENGE_N = 40       # 1.6 s: default streak threshold / far-from-stoppage spell room
 CHALLENGE_FAST = 20    # adaptive streak threshold: clear challenger advantage
 CHALLENGE_SLOW = 60    # adaptive streak threshold: ambiguous / missing-ball stretches
 REST_VISIBLE_MIN = 10 # restart = first ball-visible run >= 0.4 s inside a set-piece window
@@ -74,6 +77,11 @@ FAST_KMH = 62.0       # km/h: p90 of computed ball speed (data_audit) = "directe
 AMBIG_MARGIN = 2.0    # m: |d_challenger - d_incumbent| below this = genuinely ambiguous
 ADV_LARGE = 8.0       # m: challenger distance advantage that shortens the challenge window
 MIN_RUN = 8           # frames: minimum alive run not bracketed by D/edge (else -> X)
+CONF_STRONG = 1.5     # combined-evidence confidence (|e_home - e_away|, same dimensionless
+                      # scale as the evidence terms) that counts as "strong": lets a
+                      # sustained challenge switch right up to a stoppage when the
+                      # remaining segment room < CHALLENGE_N. Chosen from the evidence
+                      # scale (W_SUP = 1.5 per player), not fitted to any ground truth.
 # evidence weights (dimensionless; chosen from signal scales, not GT)
 W_DIST = 1.0          # per-metre of nearest-outfield distance advantage
 W_SUP = 1.5           # per player of numerical superiority within SUP_RADIUS
@@ -193,14 +201,17 @@ def stream_atd(raw_path, team_of):
             rest = line[c1 + 1:]
             c2 = rest.find(":")
             ball = rest[c2 + 1:]
-            if ball[0] == "N":  # NaN
-                continue
-            a = ball.index(",")
-            bx = float(ball[:a]) * L
-            by = float(ball[a + 1:ball.index(",", a + 1)]) * W
-            ball_xy[f, 0] = bx
-            ball_xy[f, 1] = by
+            # always parse the player positions (claim 1 fix): only the BALL fields may be
+            # absent — player evidence must survive ball occlusion so the <= MAX_GAP ball
+            # interpolation and downstream features stay useful.
             best, best_team = None, NOBODY
+            bx = by = np.nan
+            if ball[:1] not in ("", "N"):  # ball present: "N" = NaN, else "x,y,conf"
+                a = ball.index(",")
+                bx = float(ball[:a]) * L
+                by = float(ball[a + 1:ball.index(",", a + 1)]) * W
+                ball_xy[f, 0] = bx
+                ball_xy[f, 1] = by
             for slot, g in enumerate(rest[:c2].split(";")):
                 if g[0] == "N":
                     continue
@@ -209,12 +220,14 @@ def stream_atd(raw_path, team_of):
                 py = float(g[x + 1:g.index(",", x + 1)]) * W
                 player_xy[f, slot, 0] = px
                 player_xy[f, slot, 1] = py
-                dx = px - bx
-                dy = py - by
-                d = dx * dx + dy * dy
-                if best is None or d < best:
-                    best, best_team = d, team_of[slot]
-            raw_team[f] = best_team
+                if not np.isnan(bx):
+                    dx = px - bx
+                    dy = py - by
+                    d = dx * dx + dy * dy
+                    if best is None or d < best:
+                        best, best_team = d, team_of[slot]
+            if best is not None:
+                raw_team[f] = best_team
     return ball_xy, player_xy, raw_team
 
 
@@ -235,7 +248,12 @@ def fill_ball(ball_xy):
         n += 1
         if j - i <= MAX_GAP and i > 0 and j < N_FRAMES:
             for dim in (0, 1):
-                filled[i:j, dim] = np.interp(idx[i:j], [i - 1, j],
+                # np.interp needs increasing xp: [i-1, j] already is, but guard against
+                # equal endpoints (empty window) to stay panic-free on odd inputs
+                xp = [i - 1, j]
+                if xp[0] == xp[1]:
+                    continue
+                filled[i:j, dim] = np.interp(idx[i:j], xp,
                                               [ball_xy[i - 1, dim], ball_xy[j, dim]])
         i = j
     return filled, n
@@ -337,11 +355,23 @@ def phase_priors(events):
         b = min(N_FRAMES, ev["end"])
         if b <= a or ev["team"] is None:
             continue
-        if ev["code"] in PHASE_CODES:
-            if ev["code"] in TRANSITION_CODES:
-                transition[a:b] = ev["team"]
+        if ev["code"] in TRANSITION_CODES:
+            # claim 3 fix: transition codes come from their OWN list (the old
+            # `if code in PHASE_CODES: if code in TRANSITION_CODES` chain was only
+            # reachable via PHASE_CODES, which lists "attacking transition" but never
+            # "defensive transition" — so defensive transitions never fired a prior).
+            # CAUTION (reviewer): in a defensive transition the tagged team has LOST
+            # possession — its tag marks the side that went backwards, so it must NOT
+            # become the new possessor: the transition prior names the OTHER team (the
+            # one that gains the ball). An attacking transition tags the team that won
+            # the ball forward and stays as-is. No other event code reaches this branch.
+            if ev["code"] == "defensive transition":
+                gained = AWAY if ev["team"] == HOME else HOME
             else:
-                phase_vote[a:b, ev["team"]] = W_PHASE
+                gained = ev["team"]
+            transition[a:b] = gained
+        elif ev["code"] in PHASE_CODES:
+            phase_vote[a:b, ev["team"]] = W_PHASE
         elif ev["code"] == BOX_CODE:
             box_vote[a:b, ev["team"]] = W_BOX
     return phase_vote, box_vote, transition
@@ -426,7 +456,10 @@ def dead_intervals(events, visible, ball_known):
             cur = merged[-1]
             if b > cur[1]:
                 cur[1] = b
-                cur[2] = p
+                # never let a merge DROP the seed prior of an interval that already
+                # carried one (an untagged interval merging in must not erase it)
+                if cur[2] is None:
+                    cur[2] = p
         else:
             merged.append([a, b, p])
     return merged
@@ -521,8 +554,16 @@ def state_machine(raw_team, dead, fallback, challenge_n=None, feats=None, ev=Non
         when evidence is ambiguous (margin < AMBIG_MARGIN) or the ball is unknown;
         CHALLENGE_N (40) otherwise. Transition priors also UNLOCK challenge streaks during
         long unknown-ball blocks (evidence otherwise holds).
-      * structural gate unchanged: a direct switch needs incumbent spell >= CHALLENGE_N and
-        no D/edge within CHALLENGE_N after t — the bracketing invariant holds by construction.
+      * combined evidence picks the challenge candidate: the team with the higher
+        per-frame evidence (distance + superiority + phase votes) is challenged for/
+        toward; the nearest-player raw signal only breaks an evidence tie. GK exclusion,
+        dead-ball and transition-unlock logic unchanged.
+      * segment-duration gate is a SOFT preference: far from a stoppage a switch still
+        needs incumbent spell >= CHALLENGE_N with no D in the next CHALLENGE_N frames
+        (bracketing invariant, audit_direct_switches = 0); with < CHALLENGE_N frames
+        left before a stoppage, sustained evidence (|e0 - e1| >= CONF_STRONG) or the
+        adaptive fast threshold may switch right up to it — short real possessions die
+        no more at stoppages.
       * metric-aligned labels: ambiguous team evidence inside an alive possession emits X
         (never a coin flip); dead frames always D; ambiguous DEAD frames are D too (never X).
     ambi_out: optional bool array, set True on frames where ambiguity produced X (tracing).
@@ -630,7 +671,25 @@ def state_machine(raw_team, dead, fallback, challenge_n=None, feats=None, ev=Non
                     t += 1
                     continue
             switched = False
-            if eff_sig != NOBODY and eff_sig != state:
+            # claim 2 fix: the combined evidence (distance + numerical superiority +
+            # phase/box votes) explicitly determines the challenge candidate team and
+            # its confidence; the nearest-player signal is only the fallback when the
+            # combined evidence is tied. GK exclusion, dead-ball and phase logic (n_eff,
+            # mid-flight, transition unlock) are unchanged — this is a wiring fix.
+            if eva is not None and known[t]:
+                e0, e1 = float(eva[t, HOME]), float(eva[t, AWAY])
+            else:
+                e0 = e1 = 0.0
+            if e0 > e1 + 1e-6:
+                cand, conf = HOME, e0 - e1
+            elif e1 > e0 + 1e-6:
+                cand, conf = AWAY, e1 - e0
+            else:
+                # combined evidence tied or unknown -> fall back to the nearest-player
+                # signal, including the transition-prior unlock for unknown-ball blocks
+                cand, conf = int(eff_sig), 0.0
+            if cand != NOBODY and cand != state:
+                eff_sig = cand
                 if eff_sig == streak_team:
                     streak += 1
                 else:
@@ -640,11 +699,25 @@ def state_machine(raw_team, dead, fallback, challenge_n=None, feats=None, ev=Non
                 mid_flight = (speed_ok[t] and ball_kmh[t] >= FAST_KMH
                               and streak_team != NOBODY)
                 if streak >= need and not mid_flight:
-                    # structural gate: both joined spells must be >= CHALLENGE_N or
-                    # D/edge-bracketed (bracketing invariant, audit_direct_switches = 0)
-                    if (t - spell_start >= CHALLENGE_N
-                            and t + CHALLENGE_N <= stop
-                            and not dmask[t:t + CHALLENGE_N].any()):
+                    # claim 4 fix: the structural gate was an ABSOLUTE veto — no switch
+                    # within CHALLENGE_N frames of a stoppage or the run edge, so e.g.
+                    # 30 frames of clear evidence before a stoppage never switched.
+                    # Segment duration is now a SOFT preference: require the joined
+                    # spell only while there is room left BEFORE the next interruption,
+                    # and let sufficient sustained evidence (conf >= CONF_STRONG, or
+                    # the adaptive fast band) switch right up to the stoppage.
+                    # bracketing invariant: any spell still shorter than CHALLENGE_N
+                    # exits into D/edge (checked in audit_direct_switches).
+                    room = stop - t
+                    if room >= CHALLENGE_N:
+                        need_soft = (t - spell_start >= CHALLENGE_N
+                                     and not dmask[t:t + CHALLENGE_N].any())
+                    elif room > 0:
+                        need_soft = (conf >= CONF_STRONG or need == fast_n) and \
+                                    not dmask[t:t + room].any()
+                    else:
+                        need_soft = False
+                    if need_soft:
                         state = eff_sig
                         streak_team, streak = NOBODY, 0
                         spell_start = t
@@ -737,9 +810,15 @@ def write_submission(path, labels):
     folder = os.path.dirname(path)
     if folder and not os.path.isdir(folder):
         os.makedirs(folder)
-    with open(path, "w") as fh:
+    # reproducibility fix (a): pin line endings on any platform — newline="\n" disables
+    # universal-newline translation and lineterminator="\n" pins the writer's separator —
+    # so the md5 of the output matches across Windows/Linux.
+    if hasattr(labels, "tolist"):
+        labels = labels.tolist()
+    with open(path, "w", newline="\n") as fh:
         fh.write("frame,label\n")
-        fh.writelines("{},{}\n".format(i, lab) for i, lab in enumerate(labels))
+        writer = csv.writer(fh, lineterminator="\n")
+        writer.writerows((i, lab) for i, lab in enumerate(labels))
     return path
 
 

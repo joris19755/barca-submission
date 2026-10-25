@@ -1,16 +1,16 @@
 {
   "full_default": {
-    "a_share": 0.3037,
+    "a_share": 0.3244,
     "d_share": 0.1532,
-    "h_share": 0.3381,
-    "macro_f1": 0.664,
-    "mean_s": 14.2,
-    "median_s": 8.4,
-    "n_pred_spells": 21,
-    "poss_h1": 179,
-    "poss_h2": 182,
-    "spell_f1": 0.4,
-    "x_share": 0.2049
+    "h_share": 0.3175,
+    "macro_f1": 0.5212,
+    "mean_s": 11.4,
+    "median_s": 7.6,
+    "n_pred_spells": 36,
+    "poss_h1": 222,
+    "poss_h2": 225,
+    "spell_f1": 0.2038,
+    "x_share": 0.2048
   },
   "no_ball_fill": {
     "a_share": 0.3056,

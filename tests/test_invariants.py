@@ -13,7 +13,9 @@ What is actually guaranteed (verified against the pipeline design, stated honest
     alive frame inside a D run, impossible by run construction);
   * a team switch away from a spell is only immediate (challenge window) when the spell is
     bracketed by D or a graded-run edge; otherwise the opposing signal had to persist
-    CHALLENGE_N (40 frames) — this is what the design really guarantees;
+    CHALLENGE_N (40 frames) — with one documented softening: close to a stoppage, sustained
+    combined evidence (or the fast band) may switch right up to it, so a short spell may
+    exit directly into H/A, but is still anchored on one side by D/X/edge;
   * restarts: first alive spell of each half starts on a D predecessor (or run edge);
   * half boundary: last label before each graded run and first label at/after each graded
     run's end is X — no label spill across halftime;
@@ -116,8 +118,9 @@ def test_direct_label_switches_are_bounded_and_documented(labels):
     """H->A and A->H on adjacent frames DO occur by design (hysteresis, no mandatory D).
 
     The design guarantees: a switch's *opposing signal* must persist CHALLENGE_N frames
-    unless the departing spell is bracketed by D or a graded-run edge. Assert the observed
-    counts are stable/bounded and that every short spell touches D or an edge.
+    unless the departing spell is bracketed by D or a graded-run edge — softened as
+    documented below (sustained evidence may switch right up to a stoppage). Assert the
+    observed counts are stable/bounded and that every short spell touches D, X or an edge.
     """
     changed = np.flatnonzero(labels[1:] != labels[:-1]) + 1
     pairs = [(str(labels[i - 1]), str(labels[i])) for i in changed]
@@ -125,15 +128,20 @@ def test_direct_label_switches_are_bounded_and_documented(labels):
     # sanity: observed counts (full-match, both halves) — regression tripwire, not a limit
     assert 0 < direct_ha < 600, direct_ha
     # no alive -> X -> alive inside a run: X only outside runs (already asserted), and
-    # every spell shorter than the challenge window touches D or a graded-run edge.
+    # every spell shorter than the challenge window touches D, X or a graded-run edge.
+    # (review-fix 4: segment duration is a SOFT preference — close to a stoppage a
+    # sustained-evidence challenge may switch up to it, so such a short spell may exit
+    # directly into H/A; it is still anchored on one side by D/X/edge. Relaxing the old
+    # strict both-sides-D/edge gate is deliberate: the 40-frame veto was softened.)
     for start, stop in H.GRADED_RUNS:
         for st, en, team in H.spells_in(labels, start, stop):
             if en - st >= CHALLENGE_N:
                 continue
-            left = st == start or labels[st - 1] == "D"
-            right = en == stop or labels[en] == "D"
-            assert left and right, \
-                "short spell {}..{} ({}) not bracketed by D/edge".format(st, en, team)
+            left_letter = "X" if st == start else labels[st - 1]
+            right_letter = "X" if en == stop else labels[en]
+            assert left_letter in ("D", "X") or right_letter in ("D", "X"), \
+                "short spell {}..{} ({}) not anchored by D/X/edge ({}|{})".format(
+                    st, en, team, left_letter, right_letter)
 
 
 def test_restart_spells_come_after_d_or_edge(labels):

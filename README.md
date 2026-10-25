@@ -12,7 +12,8 @@ moment), goal windows are `D` outright, and the set-piece "Team" tag seeds posse
 restart. During play, the raw signal is the nearest tracked player to the linearly-filled ball
 track, run through a hysteresis state machine: the current possessor is held until the
 opposing team's signal persists for 1.6 s, which kills the churn of a naive nearest-neighbour
-baseline while staying structurally plausible (40–60 possessions per half). Frames with no
+baseline while staying structurally plausible (222 possessions in H1, 225 in H2 on the graded
+runs of this match — measured from the regenerated file, not a target range). Frames with no
 signal fall back to the official `smooth50` baseline label. All parameters were chosen for
 structural plausibility — never by tuning on the public ground truth.
 
@@ -34,7 +35,7 @@ MTAH_DATA_DIR=/path/to/match-bundle python -m possessed --out barca.csv
 ```
 
 - **Expected output:** `barca.csv` — header plus exactly **199,319 data rows**
-  (`frame,label`) ≈1.9 MB, md5 `81a9a48c1b42132b68f09f1247fb8305` (byte-identical on any
+  (`frame,label`) ≈1.9 MB, md5 `96a8d91e50d7c0631bad520ac1fe927b` (byte-identical on any
   machine with the pinned versions).
 - The data root is taken from `--data-dir /path/to/match-bundle` if you prefer the flag over
   the environment variable; both follow the official bundle layout, i.e. the inputs live at
@@ -47,7 +48,7 @@ MTAH_DATA_DIR=/path/to/match-bundle python -m possessed --out barca.csv
 ### Tests and audit
 
 ```bash
-MTAH_DATA_DIR=/path/to/match-bundle python -m pytest tests -q   # 12 tests
+MTAH_DATA_DIR=/path/to/match-bundle python -m pytest tests -q   # 16 tests
 MTAH_DATA_DIR=/path/to/match-bundle python tests/audit_direct_switches.py   # → tests/_results/
 ```
 
