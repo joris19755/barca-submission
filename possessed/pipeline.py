@@ -32,8 +32,11 @@ Architecture (deterministic, numpy + stdlib only, no GT used for tuning):
    shorter than MIN_RUN not bracketed by D/edge become X (blip killer).
 7. Fallback: frames with no state and no signal take the official smooth50 baseline label.
 
-Parameters were chosen structurally (mean spell duration 12-16 s vs published GT anchor
-14.19 s, possessions near 359, D share ~15%), never by scoring on the public 5-minute GT.
+Parameters were chosen structurally (mean spell duration 12-16 s, D share ~15%), never by
+scoring on the public 5-minute GT. The 14.19 s mean duration IS published (public 5-min GT
+meta, 17 possessions: mtah-2027/evaluation/gt/BAR-ATH_possession_gt_public_meta.json); 359
+possessions is NOT — it is our own sensitivity-sweep count (tests/sections/sensitivity.md,
+the legacy N=40 row at 183+176), used as a descriptive structural diagnostic only.
 """
 
 import argparse

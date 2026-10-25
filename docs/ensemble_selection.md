@@ -4,9 +4,14 @@ Eight runs around the shipped default (adaptive band [20,60], phase+transition p
 X-safety margin 2.0 m), each a full CSV regeneration with structural statistics plus
 public-window scorer diagnostics. Public diagnostics are **DIAGNOSTICS ONLY**: the window
 bootstrap σ ≈ 0.08, so every score delta below 0.08 in this table is noise and was not used
-for selection. Selection is by simultaneous fit to the structural anchors: possessions ≈ 359,
-pooled mean duration ≈ 14.19 s (target band 12–16 s), D share 15.3 %, 0 bracketing
-violations, small in-run X share.
+for selection. Selection is by simultaneous fit to the structural diagnostics: possessions
+≈ 359, pooled mean duration ≈ 14.19 s (target band 12–16 s), D share 15.3 %, 0 bracketing
+violations, small in-run X share. Of these, only the 14.19 s pooled mean is a published
+value — a diagnostic from the public 5-minute window (17 possessions,
+`mtah-2027/evaluation/gt/BAR-ATH_possession_gt_public_meta.json`). The count of 359 is our
+own sweep-derived figure (the legacy N=40 row at 183/176 in
+`tests/sections/sensitivity.md`), used here as a descriptive diagnostic: it is explicitly
+NOT an official figure and NOT a tuning target.
 
 Raw rows: `tests/_results/ensemble_grid.json`; variant CSVs: `tests/_cache/ensemble/*.csv`.
 Runner: `python tests/run_ensemble_grid.py [stage1|combo|all]`.
