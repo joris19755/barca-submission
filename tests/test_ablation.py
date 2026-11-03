@@ -80,7 +80,8 @@ def test_ablation_matrix_and_report(built):
             r["h_share"], r["a_share"], r["x_share"], r["macro_f1"], r["spell_f1"],
             r["n_pred_spells"]))
     notes.append("* official-scorer columns are public-window diagnostics only — "
-                 "never a tuning signal (rules: no tuning on the public 5-min window).")
+                 "never a tuning signal, except the published 14.19 s mean-duration "
+                 "metadata anchor (rules: no tuning on the public 5-min window).")
     notes.append("Observations: smart dead-ball is what creates the D class and the restart "
                  "priors (no_smart_dead collapses D and loses possession structure at "
                  "restarts); ball fill stabilises the raw signal in camera gaps "

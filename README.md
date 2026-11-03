@@ -14,8 +14,10 @@ track, run through a hysteresis state machine: the current possessor is held unt
 opposing team's signal persists for 1.6 s, which kills the churn of a naive nearest-neighbour
 baseline while staying structurally plausible (222 possessions in H1, 225 in H2 on the graded
 runs of this match — measured from the regenerated file, not a target range). Frames with no
-signal fall back to the official `smooth50` baseline label. All parameters were chosen for
-structural plausibility — never by tuning on the public ground truth.
+signal fall back to the official `smooth50` baseline label. All parameters were chosen for structural plausibility: no frame labels and
+no scorer score (macroF1, spellF1, IoU) ever served as a selection criterion. The one
+public-window quantity that did inform structure was the published mean possession duration
+of 14.19 s, used purely as a structural plausibility anchor.
 
 ## Install
 
@@ -57,6 +59,9 @@ MTAH_DATA_DIR=/path/to/match-bundle python tests/audit_direct_switches.py   # �
 `docs/` — `metric_leverage.md` (which eval metrics a single frame can move and how much),
 `data_audit.md` (untapped signals in the MTAH 2027 bundle), `ensemble_selection.md` (the
 8-run grid over the new knobs and why the shipped defaults won).
+
+A background note for readers of `tests/_results/`: the transition-latency grid in there was
+measured on GT metrics but fully reverted — no parameter from that round was adopted.
 
 Before submitting, check it with the official validator from the competition repo:
 

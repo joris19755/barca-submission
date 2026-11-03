@@ -1,6 +1,7 @@
 """BARCA possession pipeline (More than a Hack 2027).
 
-Architecture (deterministic, numpy + stdlib only, no GT used for tuning):
+Architecture (deterministic, numpy + stdlib only, no GT frame labels or scorer scores used
+for tuning):
 
 1. Dead ball from Smart Tagging: SET PIECES windows mark [window_start, restart) as D, where
    restart = first persistent ball-visibility run inside the window (play resumes there); GOALS
@@ -34,11 +35,14 @@ Architecture (deterministic, numpy + stdlib only, no GT used for tuning):
    shorter than MIN_RUN not bracketed by D/edge become X (blip killer).
 7. Fallback: frames with no state and no signal take the official smooth50 baseline label.
 
-Parameters were chosen structurally (mean spell duration 12-16 s, D share ~15%), never by
-scoring on the public 5-minute GT. The 14.19 s mean duration IS published (public 5-min GT
-meta, 17 possessions: mtah-2027/evaluation/gt/BAR-ATH_possession_gt_public_meta.json); 359
-possessions is NOT — it is our own sensitivity-sweep count (tests/sections/sensitivity.md,
-the legacy N=40 row at 183+176), used as a descriptive structural diagnostic only.
+Parameters were chosen structurally (mean spell duration 12-16 s, D share ~15%). No frame
+labels and no scorer score (macroF1/spellF1/IoU) served as a selection criterion; the only
+public-window quantity used was the published mean possession duration of 14.19 s (public
+5-min GT meta, 17 possessions:
+mtah-2027/evaluation/gt/BAR-ATH_possession_gt_public_meta.json), taken as a structural
+plausibility anchor. The count 359 is NOT published — it is our own sensitivity-sweep count
+(tests/sections/sensitivity.md, the legacy N=40 row at 183+176), used as a descriptive
+structural diagnostic only.
 """
 
 import argparse
@@ -62,7 +66,7 @@ HALFTIME_FRAME = (GRADED_RUNS[0][1] + GRADED_RUNS[1][0]) // 2
 
 HOME, AWAY, NOBODY = 0, 1, -1
 
-# --- parameters (chosen structurally, not on the public GT) ---
+# --- parameters (chosen structurally, not on public-GT frame labels or scorer scores) ---
 MAX_GAP = 50          # 2 s: interpolate ball gaps up to this; longer stays unknown
 CHALLENGE_N = 40       # 1.6 s: default streak threshold / far-from-stoppage spell room
 CHALLENGE_FAST = 20    # adaptive streak threshold: clear challenger advantage

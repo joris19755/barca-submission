@@ -102,8 +102,9 @@ is only 25–41% for Throw-in/Corner/Free Kick (windows are 35 s, mostly live pl
 the restart). **No unused subtype marks ball-out moments**: only SET PIECES windows
 have dead-ball semantics; the paired phase codes and the box/entry codes are live-play
 phases. So dead-ball precision/recall gain from unused subtypes ≈ **0 on the restart
-itself** — the gain is elsewhere (§4.3, possession priors). Two residual GOALS/SP facts
-worth noting: 1 of 4 `Kick Off (After Goal)` windows has no ≥0.4 s visible run
+the restart itself** — the gain is elsewhere (§4.3, possession priors). Two residual GOALS/SP
+facts still belong in the picture: 1 of 4 `Kick Off (After Goal)` windows has no ≥0.4 s
+visible run
 (fallback to window end), and GOALS windows are 3–169 s long with ball visibility
 3–16% — already handled as D-outright.
 

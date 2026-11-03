@@ -57,7 +57,8 @@ def test_sweep_runs_and_reports(sweep):
             r["poss_h1"] + r["poss_h2"], r["mean_s"], r["median_s"], r["d_share"],
             r["macro_f1"], r["spell_f1"]))
     lines.append("")
-    lines.append("* public-window diagnostics only; not a tuning signal.")
+    lines.append("* public-window diagnostics only; never a tuning signal, except the "
+                 "published 14.19 s mean-duration metadata anchor.")
     narrow = by_n[15]["poss_h1"] + by_n[15]["poss_h2"]
     wide = by_n[75]["poss_h1"] + by_n[75]["poss_h2"]
     cur = by_n[40]
@@ -65,7 +66,7 @@ def test_sweep_runs_and_reports(sweep):
                  "N=40 row sits at {}/{} per half. The shipped default is the ADAPTIVE "
                  "machine (mean spell ~12-16 s vs the 14.19 s structural anchor), so the "
                  "legacy grid only shows the knob's direction; score columns move within "
-                 "a band and are reported without acting on them.".format(
+                 "a band and we report them without acting on them.".format(
                      wide, narrow, cur["poss_h1"], cur["poss_h2"]))
     report = "## CHALLENGE_N sensitivity sweep\n\n" + "\n".join(lines) + "\n"
     H.json_dump(sweep, os.path.join(H.RESULTS_DIR, "sensitivity_rows.json"))

@@ -6,9 +6,12 @@ public-window scorer diagnostics. Public diagnostics are **DIAGNOSTICS ONLY**: t
 bootstrap σ ≈ 0.08, so every score delta below 0.08 in this table is noise and was not used
 for selection. Selection is by simultaneous fit to the structural diagnostics: possessions
 ≈ 359, pooled mean duration ≈ 14.19 s (target band 12–16 s), D share 15.3 %, 0 bracketing
-violations, small in-run X share. Of these, only the 14.19 s pooled mean is a published
-value — a diagnostic from the public 5-minute window (17 possessions,
-`mtah-2027/evaluation/gt/BAR-ATH_possession_gt_public_meta.json`). The count of 359 is our
+violations, small in-run X share. Here we state the provenance plainly, because it matters:
+of these anchors, only the 14.19 s pooled mean is a published value — a diagnostic from the
+public 5-minute window (17 possessions,
+`mtah-2027/evaluation/gt/BAR-ATH_possession_gt_public_meta.json`) — and we used it as a
+structural plausibility anchor while ranking variants. No frame labels and no scorer score
+(macroF1, spellF1, IoU) entered the selection at all. The count of 359 is our
 own sweep-derived figure (the legacy N=40 row at 183/176 in
 `tests/sections/sensitivity.md`), used here as a descriptive diagnostic: it is explicitly
 NOT an official figure and NOT a tuning target.
@@ -37,7 +40,7 @@ reports **total violations: 0** on the shipped file. *Diagnostics only.
 ## Selection: the current default (row 1)
 
 All eight variants pass the hard criteria (0 violations, mean inside 12–16 s, D pinned at
-15.3 % by Smart Tagging dead-ball, tiny in-run X). Ranking on the two soft anchors:
+15.3 % by Smart Tagging dead-ball, tiny in-run X). We then ranked on the two soft anchors:
 
 - **Possessions ≈ 359**: base 361 (Δ2) and x_1.0 361 (Δ2); band_30_50 358 (Δ1) is closest;
   every other variant sits at 353–357.
@@ -56,7 +59,7 @@ delta is < 0.08 (bootstrap σ) and therefore noise.
 
 **Outcome: current default wins; no change to the shipped pipeline defaults.**
 The new knobs (`--challenge-band`, `--no-phase-prior`, `--x-margin`, and the matching
-`build_full` keyword arguments) remain available for future sweeps and default to the
-shipped behavior — verified byte-identical at the time of this grid (md5
-`81a9a48c1b42132b68f09f1247fb8305`). The pipeline has since received the second-review
+`build_full` keyword arguments) we kept around for future sweeps — they default to the
+shipped behavior and were verified byte-identical at the time of this grid (md5
+`81a9a48c1b42132b68f09f1247fb8305`). Since this grid the pipeline received the second-review
 fixes; the current shipped file is md5 `96a8d91e50d7c0631bad520ac1fe927b` (see README).
