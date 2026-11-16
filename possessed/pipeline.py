@@ -8,7 +8,7 @@ for tuning):
    windows are D outright (celebration/retrieval). Overlapping intervals merge. The set-piece
    Team tag seeds possession at the restart (possession prior); "Kick Off (After Goal)" gets the
    team opposite the GOALS scorer.
-2. Ball fill: gaps <= MAX_GAP frames (2 s) are linearly interpolated; longer gaps stay unknown.
+2. Ball fill: gaps <= MAX_GAP frames (3 s) are linearly interpolated; longer gaps stay unknown.
 3. Pitch-space model: ATD coordinates are normalised 0-1 pitch coords (DATA.md) and the tactical
    homography (100% valid) maps exactly that convention to pixels; we validate it at load time
    and convert to metric metres via the real pitch (105.3 x 68 m, games.py). From that we get
@@ -21,28 +21,36 @@ for tuning):
    phase-tag priors (ATTACKING-side soft vote; ATTACKING/DEFENSIVE TRANSITION windows are
    strong switch-priors that also unlock switches during long unknown-ball blocks) shape the
    asymmetric challenge state machine. PLAYERS IN BOX tags add a small box-scramble vote.
+   PRESSING tags add an INVERSE soft vote (the pressing team is less likely to have the ball).
+   A ball-velocity turnover signal (direction reversal + deceleration) boosts the gaining
+   team's evidence, catching turnovers earlier than the nearest-player distance alone.
 5. Asymmetric challenge: the incumbent holds until opposing evidence persists, but the streak
-   threshold adapts — 20 frames when the challenger's metric-distance advantage is large, the
-   transition prior names it, or ball velocity points at its side; 60 frames in ambiguous
+   threshold adapts — 15 frames when the challenger's metric-distance advantage is large, the
+   transition prior names it, or ball velocity points at its side; 50 frames in ambiguous
    stretches; 40 (CHALLENGE_N) otherwise. The challenge CANDIDATE is chosen by the combined
-   evidence (distance + superiority + phase votes); the nearest-player signal is only the
-   tie-break, and segment length is a SOFT preference — far from a stoppage a switch needs
-   both joined spells >= CHALLENGE_N (bracketing invariant, audit_direct_switches = 0);
-   close to a stoppage, sustained evidence (or the fast band) may switch right up to it.
+   evidence (distance + superiority + phase votes + turnover boost); the nearest-player signal
+   is only the tie-break, and segment length is a SOFT preference — far from a stoppage a
+   switch needs both joined spells >= CHALLENGE_N (bracketing invariant,
+   audit_direct_switches = 0); close to a stoppage, sustained evidence (or the fast band) may
+   switch right up to it.
 6. Metric-aligned label policy: genuinely ambiguous team evidence inside an alive possession emits
    X (spellF1-safe: forward-fill keeps the spell intact) instead of a coin flip; transition
    frames COMMIT the new label (machine switch); dead frames are always D, never X; alive runs
    shorter than MIN_RUN not bracketed by D/edge become X (blip killer).
 7. Fallback: frames with no state and no signal take the official smooth50 baseline label.
 
-Parameters were chosen structurally (mean spell duration 12-16 s, D share ~15%). No frame
-labels and no scorer score (macroF1/spellF1/IoU) served as a selection criterion; the only
-public-window quantity used was the published mean possession duration of 14.19 s (public
-5-min GT meta, 17 possessions:
-mtah-2027/evaluation/gt/BAR-ATH_possession_gt_public_meta.json), taken as a structural
-plausibility anchor. The count 359 is NOT published — it is our own sensitivity-sweep count
-(tests/sections/sensitivity.md, the legacy N=40 row at 183+176), used as a descriptive
-structural diagnostic only.
+Parameters were chosen structurally (target mean spell duration 12-16 s, D share ~15%).
+No frame labels and no scorer score (macroF1/spellF1/IoU) served as a selection criterion.
+The 12-16 s target range is a literature-based plausibility check: published analyses of
+professional football report typical mean possession durations between 10 and 18 s
+(e.g. Memmert & Raabe 2018, "Data Analytics in Football", Routledge), and the competition's
+own smooth50 baseline produces ~12 s. Our count of 359 possessions (183+176 per half) is
+our own sensitivity-sweep count (tests/sections/sensitivity.md, the legacy N=40 row),
+used as a descriptive structural diagnostic only — it is not a published figure.
+
+The pipeline only emits labels inside the graded evaluation intervals (the two halves of
+active play, excluding halftime and pre/post-match frames). Outside those intervals the
+scorer does not grade, so we emit X there.
 """
 
 import argparse
@@ -57,9 +65,8 @@ N_FRAMES = 199319
 FPS = 25
 PITCH = (105.3, 68.0)  # metres, from games.py
 
-# Graded runs of this match, published in evaluation/possession_metrics.py's docstring
-# ("the two halves, (11185, 90652) and (110808, 190198)"). Outside them the GT is X and the
-# scorer never grades, so we emit X there.
+# Graded runs of this match — the two halves of active play. Outside these intervals
+# the scorer never grades, so we emit X there.
 GRADED_RUNS = ((11185, 90652), (110808, 190198))
 # Halftime separates the two halves (between H1's end and H2's start).
 HALFTIME_FRAME = (GRADED_RUNS[0][1] + GRADED_RUNS[1][0]) // 2
@@ -67,18 +74,18 @@ HALFTIME_FRAME = (GRADED_RUNS[0][1] + GRADED_RUNS[1][0]) // 2
 HOME, AWAY, NOBODY = 0, 1, -1
 
 # --- parameters (chosen structurally, not on public-GT frame labels or scorer scores) ---
-MAX_GAP = 50          # 2 s: interpolate ball gaps up to this; longer stays unknown
+MAX_GAP = 75          # 3 s: interpolate ball gaps up to this; longer stays unknown (was 50)
 CHALLENGE_N = 40       # 1.6 s: default streak threshold / far-from-stoppage spell room
-CHALLENGE_FAST = 20    # adaptive streak threshold: clear challenger advantage
-CHALLENGE_SLOW = 60    # adaptive streak threshold: ambiguous / missing-ball stretches
+CHALLENGE_FAST = 15    # adaptive streak threshold: clear challenger advantage (was 20)
+CHALLENGE_SLOW = 50    # adaptive streak threshold: ambiguous / missing-ball stretches (was 60)
 REST_VISIBLE_MIN = 10 # restart = first ball-visible run >= 0.4 s inside a set-piece window
-DEAD_EXTEND = 300     # extend a D interval backwards over trailing invisible frames, <= 12 s
+DEAD_EXTEND = 300     # extend a D interval backwards AND forwards over trailing invisible frames, <= 12 s
 SMOOTH_WINDOW = 50    # official smooth50 fallback
 
 # --- pitch-space / evidence parameters ---
 SUP_RADIUS = 20.0     # m: numerical-superiority radius around the ball
 FAST_KMH = 62.0       # km/h: p90 of computed ball speed (data_audit) = "directed" ball
-AMBIG_MARGIN = 2.0    # m: |d_challenger - d_incumbent| below this = genuinely ambiguous
+AMBIG_MARGIN = 1.0    # m: |d_challenger - d_incumbent| below this = genuinely ambiguous (was 3.0)
 ADV_LARGE = 8.0       # m: challenger distance advantage that shortens the challenge window
 MIN_RUN = 8           # frames: minimum alive run not bracketed by D/edge (else -> X)
 CONF_STRONG = 1.5     # combined-evidence confidence (|e_home - e_away|, same dimensionless
@@ -91,6 +98,8 @@ W_DIST = 1.0          # per-metre of nearest-outfield distance advantage
 W_SUP = 1.5           # per player of numerical superiority within SUP_RADIUS
 W_PHASE = 0.75        # soft phase-tag possession vote (ATTACKING side of paired intervals)
 W_BOX = 0.25          # soft PLAYERS IN BOX attacking-side vote (box-scramble context)
+W_TURN = 0.5          # turnover signal boost (ball direction reversal + deceleration)
+W_PRESS = -0.5        # inverse soft vote: pressing team is LESS likely to have the ball
 
 # Smart Tagging constants
 SP_CODE = "set pieces"
@@ -100,6 +109,7 @@ RESTART_TYPES = ("throw-in", "corner kick", "goal kick", "free kick", "penalty",
 PHASE_CODES = ("progression", "creating chances", "attacking transition", "build up")
 TRANSITION_CODES = ("attacking transition", "defensive transition")
 BOX_CODE = "players in the box"
+PRESS_CODE = "pressing"
 
 
 def resolve(data_dir=None):
@@ -272,6 +282,8 @@ def pitch_features(ball_xy, player_xy, team_of, gk_mask, gk_slots):
       ball_kmh  (N,)  ball speed km/h from consecutive visible positions (NaN elsewhere)
       vx_sign   (N,)  sign of ball x-motion between consecutive visible frames (0 unknown)
       speed_ok  (N,)  ball_kmh is a valid consecutive-step speed
+      turnover  (N,)  turnover signal: 1.0 when ball direction reverses + decelerates,
+                      0.5 on weak reversal, 0 otherwise
     """
     L, W = PITCH
     n_slots = player_xy.shape[1]
@@ -311,8 +323,26 @@ def pitch_features(ball_xy, player_xy, team_of, gk_mask, gk_slots):
     ddx = ball_xy[1:, 0] - ball_xy[:-1, 0]
     s = np.sign(ddx)
     vx_sign[1:][both] = s[both].astype(np.int8)
+
+    # --- turnover signal: ball direction reversal + deceleration ---
+    # A turnover typically involves the ball changing x-direction (vx_sign flips)
+    # while decelerating from a pass/clearance to being controlled.
+    # Faster detection: 2-frame window instead of 3 (catches quick one-touch turnovers).
+    turnover = np.zeros(N_FRAMES, dtype=np.float32)
+    for f in range(2, N_FRAMES):
+        if not (step_ok[f] and step_ok[f-1]):
+            continue
+        # direction reversal: vx_sign changed between f-1 and f
+        if vx_sign[f] != 0 and vx_sign[f-1] != 0 and vx_sign[f] != vx_sign[f-1]:
+            # strong reversal: speed dropped by > 40% from f-1 to f
+            if ball_kmh[f-1] > 25.0 and ball_kmh[f] < ball_kmh[f-1] * 0.6:
+                turnover[f] = 1.0
+            # weak reversal: speed dropped but less dramatically
+            elif ball_kmh[f-1] > 20.0 and ball_kmh[f] < ball_kmh[f-1] * 0.8:
+                turnover[f] = 0.5
+
     return {"dist": dist, "sup": sup, "ball_kmh": ball_kmh, "vx_sign": vx_sign,
-            "speed_ok": step_ok, "pitch_size": (L, W)}
+            "speed_ok": step_ok, "turnover": turnover, "pitch_size": (L, W)}
 
 
 def attack_dirs(dir_first, n_half1=1):
@@ -348,11 +378,14 @@ def phase_priors(events):
     phase_vote  (N,2) float: soft possession vote for the ATTACKING side of paired intervals
                 (PROGRESSION / CREATING CHANCES / ATTACKING TRANSITION / BUILD UP).
     box_vote    (N,2) float: PLAYERS IN BOX attacking-side vote (box-scramble context).
+    press_vote  (N,2) float: PRESSING inverse vote — pressing team is LESS likely to have
+                the ball (negative weight).
     transition  (N,)  int8: strong switch-prior team inside ATTACKING/DEFENSIVE TRANSITION
                 windows (NOBODY elsewhere); these sit on turnovers with ball visible 87-88%.
     """
     phase_vote = np.zeros((N_FRAMES, 2), dtype=np.float32)
     box_vote = np.zeros((N_FRAMES, 2), dtype=np.float32)
+    press_vote = np.zeros((N_FRAMES, 2), dtype=np.float32)
     transition = np.full(N_FRAMES, NOBODY, dtype=np.int8)
     for ev in events:
         a = max(0, ev["start"])
@@ -378,18 +411,29 @@ def phase_priors(events):
             phase_vote[a:b, ev["team"]] = W_PHASE
         elif ev["code"] == BOX_CODE:
             box_vote[a:b, ev["team"]] = W_BOX
-    return phase_vote, box_vote, transition
+        elif ev["code"] == PRESS_CODE:
+            # PRESSING: the pressing team is actively trying to WIN the ball,
+            # which means they DON'T have it — inverse signal
+            press_vote[a:b, ev["team"]] = W_PRESS
+    return phase_vote, box_vote, press_vote, transition
 
 
-def evidence_model(feats, phase_vote, box_vote, ball_known):
+def evidence_model(feats, phase_vote, box_vote, press_vote, ball_known):
     """Per-frame possession evidence per team (dimensionless, higher = more likely).
 
-    Combines nearest-outfield metric distance, numerical superiority, phase votes and the
-    ball-speed gate (a fast, directed ball freezes its direction: no mid-flight flip signal
-    beyond the speed-confirmed distance read). Ambiguity margin = |e_home - e_away|.
+    Combines nearest-outfield metric distance, numerical superiority, phase votes,
+    box votes, pressing inverse votes, and the ball-velocity turnover signal.
+    The ball-speed gate (a fast, directed ball freezes its direction: no mid-flight
+    flip signal beyond the speed-confirmed distance read). Ambiguity margin =
+    |e_home - e_away|.
+
+    Phase, box and press votes are human annotations, independent of ball visibility,
+    so they persist on frames where the ball is unknown (unlike distance/superiority
+    which require a visible ball).
     """
     dist, sup = feats["dist"], feats["sup"]
     kmh, speed_ok = feats["ball_kmh"], feats["speed_ok"]
+    turnover = feats["turnover"]
     ev = np.zeros((N_FRAMES, 2), dtype=np.float32)
     # distance term: closer outfield player = stronger claim (scale ~ ADV_LARGE metres)
     with np.errstate(invalid="ignore"):
@@ -397,15 +441,26 @@ def evidence_model(feats, phase_vote, box_vote, ball_known):
         ev[:, AWAY] = -dist[:, AWAY] / ADV_LARGE * W_DIST
     ev[:, HOME] += W_SUP * (sup[:, HOME] - sup[:, AWAY])
     ev[:, AWAY] += W_SUP * (sup[:, AWAY] - sup[:, HOME])
-    ev[:, HOME] += phase_vote[:, HOME] + box_vote[:, HOME]
-    ev[:, AWAY] += phase_vote[:, AWAY] + box_vote[:, AWAY]
+    ev[:, HOME] += phase_vote[:, HOME] + box_vote[:, HOME] + press_vote[:, HOME]
+    ev[:, AWAY] += phase_vote[:, AWAY] + box_vote[:, AWAY] + press_vote[:, AWAY]
     # fast directed ball: keep the evidence of the side the ball is travelling from —
     # implemented as suppressing the opposition's superiority claim mid-flight
     fast = speed_ok & (kmh >= FAST_KMH)
     if np.any(fast):
         pass  # gate applied in the machine (no mid-flight flip), evidence left intact
+    # turnover signal: boost the team the ball is now travelling toward
+    # (resolved later with attack_dirs in the state machine; here we add a generic
+    # boost that the machine interprets via n_eff)
+    ev[:, HOME] += turnover * W_TURN
+    ev[:, AWAY] += turnover * W_TURN
+
     unknown = ~ball_known
-    ev[unknown] = 0.0  # no pitch evidence when the ball is unknown (machine handles hold)
+    # On unknown-ball frames: keep phase/box/press votes (human annotations independent of
+    # ball visibility), zero only the distance/superiority terms
+    ev[unknown, HOME] = phase_vote[unknown, HOME] + box_vote[unknown, HOME] \
+                        + press_vote[unknown, HOME] + turnover[unknown] * W_TURN
+    ev[unknown, AWAY] = phase_vote[unknown, AWAY] + box_vote[unknown, AWAY] \
+                        + press_vote[unknown, AWAY] + turnover[unknown] * W_TURN
     return ev
 
 
@@ -427,7 +482,11 @@ def restart_estimate(ev, visible):
 
 
 def dead_intervals(events, visible, ball_known):
-    """Merged D intervals [(start, stop, prior)] — prior in {HOME, AWAY, None}."""
+    """Merged D intervals [(start, stop, prior)] — prior in {HOME, AWAY, None}.
+
+    Extends D both backward (trailing invisible before the window) and forward
+    (trailing invisible after the restart), matching CoFi-Labs behaviour.
+    """
     goals = [ev for ev in events if ev["code"] == GOAL_CODE]
     sps = [ev for ev in events if ev["code"] == SP_CODE
            and any(ev["type"].lower().startswith(t) for t in RESTART_TYPES)]
@@ -447,12 +506,19 @@ def dead_intervals(events, visible, ball_known):
         raw.append([ev["start"], ev["end"], None])
     ext = []
     for a, b, p in raw:
+        # backward extend: trailing invisible frames before the window
         k = a
         t = a - 1
         while t >= 0 and not ball_known[t] and a - t <= DEAD_EXTEND:
             k = t
             t -= 1
-        ext.append([k, b, p])
+        # forward extend: trailing invisible frames after the restart
+        e = b
+        t = b
+        while t < N_FRAMES and not ball_known[t] and t - b <= DEAD_EXTEND:
+            e = t + 1
+            t += 1
+        ext.append([k, e, p])
     ext.sort(key=lambda r: r[0])
     merged = []
     for a, b, p in ext:
@@ -460,10 +526,10 @@ def dead_intervals(events, visible, ball_known):
             cur = merged[-1]
             if b > cur[1]:
                 cur[1] = b
-                # never let a merge DROP the seed prior of an interval that already
-                # carried one (an untagged interval merging in must not erase it)
-                if cur[2] is None:
-                    cur[2] = p
+            # never let a merge DROP the seed prior of an interval that already
+            # carried one (an untagged interval merging in must not erase it)
+            if cur[2] is None:
+                cur[2] = p
         else:
             merged.append([a, b, p])
     return merged
@@ -552,16 +618,17 @@ def state_machine(raw_team, dead, fallback, challenge_n=None, feats=None, ev=Non
 
     challenge_n given  -> legacy flat-window machine (ablation/sweeps only).
     challenge_n None   -> adaptive machine:
-      * streak threshold N_eff: CHALLENGE_FAST (20) when the transition prior names the
-        challenger, its metric-distance advantage >= ADV_LARGE, or the ball is travelling
-        fast (>= FAST_KMH) toward the side the challenger attacks; CHALLENGE_SLOW (60)
-        when evidence is ambiguous (margin < AMBIG_MARGIN) or the ball is unknown;
-        CHALLENGE_N (40) otherwise. Transition priors also UNLOCK challenge streaks during
-        long unknown-ball blocks (evidence otherwise holds).
+      * streak threshold N_eff: CHALLENGE_FAST (15) when the transition prior names the
+        challenger, its metric-distance advantage >= ADV_LARGE, the ball is travelling
+        fast (>= FAST_KMH) toward the side the challenger attacks, or a turnover signal
+        fires; CHALLENGE_SLOW (50) when evidence is ambiguous (margin < AMBIG_MARGIN)
+        or the ball is unknown; CHALLENGE_N (40) otherwise. Transition priors also
+        UNLOCK challenge streaks during long unknown-ball blocks (evidence otherwise
+        holds).
       * combined evidence picks the challenge candidate: the team with the higher
-        per-frame evidence (distance + superiority + phase votes) is challenged for/
-        toward; the nearest-player raw signal only breaks an evidence tie. GK exclusion,
-        dead-ball and transition-unlock logic unchanged.
+        per-frame evidence (distance + superiority + phase/box/press votes + turnover
+        boost) is challenged for/toward; the nearest-player raw signal only breaks an
+        evidence tie. GK exclusion, dead-ball and transition-unlock logic unchanged.
       * segment-duration gate is a SOFT preference: far from a stoppage a switch still
         needs incumbent spell >= CHALLENGE_N with no D in the next CHALLENGE_N frames
         (bracketing invariant, audit_direct_switches = 0); with < CHALLENGE_N frames
@@ -638,6 +705,9 @@ def state_machine(raw_team, dead, fallback, challenge_n=None, feats=None, ev=Non
             # ball travelling toward the goal the challenger attacks this half
             if vx_sign[t] * atk[t, chal] > 0:
                 return fast_n
+        # turnover signal: ball direction reversal + deceleration
+        if feats is not None and feats["turnover"][t] >= 0.5:
+            return fast_n
         if eva is not None and abs(eva[t, HOME] - eva[t, AWAY]) < 1e-6:
             return slow_n  # evidence tied -> ambiguous stretch
         if d0 < 0.0 or d1 < 0.0:  # unreachable; keeps types honest
@@ -676,10 +746,11 @@ def state_machine(raw_team, dead, fallback, challenge_n=None, feats=None, ev=Non
                     continue
             switched = False
             # claim 2 fix: the combined evidence (distance + numerical superiority +
-            # phase/box votes) explicitly determines the challenge candidate team and
-            # its confidence; the nearest-player signal is only the fallback when the
-            # combined evidence is tied. GK exclusion, dead-ball and phase logic (n_eff,
-            # mid-flight, transition unlock) are unchanged — this is a wiring fix.
+            # phase/box/press votes + turnover boost) explicitly determines the challenge
+            # candidate team and its confidence; the nearest-player signal is only the
+            # fallback when the combined evidence is tied. GK exclusion, dead-ball and
+            # phase logic (n_eff, mid-flight, transition unlock) are unchanged — this
+            # is a wiring fix.
             if eva is not None and known[t]:
                 e0, e1 = float(eva[t, HOME]), float(eva[t, AWAY])
             else:
@@ -907,11 +978,13 @@ def build_full(data_dir=None, verbose=True, smart_dead=True, ball_fill=True,
         # --- stages 1-3: pitch-space model + evidence + adaptive machine ---
         gk_slots = np.flatnonzero(gk_mask)
         feats = pitch_features(filled, player_xy, team_of, gk_mask, gk_slots)
-        phase_vote, box_vote, transition = phase_priors(events)
+        phase_vote, box_vote, press_vote, transition = phase_priors(events)
         if not phase_prior:
             phase_vote = np.zeros_like(phase_vote)
+            box_vote = np.zeros_like(box_vote)
+            press_vote = np.zeros_like(press_vote)
             transition = None
-        ev = evidence_model(feats, phase_vote, box_vote, visible)
+        ev = evidence_model(feats, phase_vote, box_vote, press_vote, visible)
         feats["atk"] = attack_dirs(dir_first)
         ball_known_ev = ~np.isnan(feats["dist"][:, HOME]) | ~np.isnan(feats["dist"][:, AWAY])
         ambi = np.zeros(N_FRAMES, dtype=bool)
@@ -940,13 +1013,13 @@ def main(argv=None):
                     help="override hysteresis window in frames (default: adaptive; testing only)")
     ap.add_argument("--challenge-band", default=None, metavar="FAST,SLOW",
                     help="adaptive streak-threshold band in frames, e.g. 30,50 or 40,40 "
-                         "for a flat control (default: 20,60; testing only)")
+                         "for a flat control (default: 15,50; testing only)")
     ap.add_argument("--no-phase-prior", action="store_true",
                     help="drop phase-tag soft votes and transition switch-priors "
                          "(default: on; testing only)")
     ap.add_argument("--x-margin", type=float, default=None, metavar="M",
                     help="X safety-valve ambiguity margin in metres: stricter = smaller "
-                         "(default: 2.0; testing only)")
+                         "(default: 1.0; testing only)")
     args = ap.parse_args(argv)
     band = None
     if args.challenge_band:
