@@ -1,5 +1,8 @@
 # Metric leverage memo — how the official scorer actually works
 
+I spent way too long reverse-engineering the official scorer. Here's what I learned,
+in case it helps someone else.
+
 Source of truth: `mtah-2027/evaluation/possession_metrics.py` (723 lines, READ ONLY) +
 `mtah-2027/EVALUATION.md` + `run_evaluation.py`. All numbers below were produced by the
 official functions, unmodified, against the **public** GT window — mechanics demonstrations
@@ -21,14 +24,14 @@ only, never tuning. Line refs are to `possession_metrics.py` unless prefixed `ru
   exactly like a wrong label** (L151-154).
 - `macro_f1` = unweighted mean of per-class F1 over H, A, D (L174-176), precision and recall
   computed from the 3×4 slice (L159-171). GT-X frames can never create a false positive
-  because they are not rows; they dilute nothing.
+  because they aren't rows; they dilute nothing.
 - **macroF1 treats X as a miss; "dead ball" is just class D with full frame weight.** No
   special-casing beyond the slice.
 
 ### 1.2 Abstention fill (temporal path)
 
 - `valid_runs()` (L259-270) derives half-open graded spans from **GT ≠ X**. On the public
-  window that is one run `(11185, 18685)`; on the private full match it is the two halves
+  window that's one run `(11185, 18685)`; on the private full match it's the two halves
   `(11185, 90652)` and `(110808, 190198)` (comment L262-264). Everything temporal happens
   strictly inside a run — never across the halftime hole.
 - `fill_abstentions()` (L274-293): per run, each pred X is replaced by the most recent non-X
@@ -63,12 +66,12 @@ only, never tuning. Line refs are to `possession_metrics.py` unless prefixed `ru
 - `spell_scores()`: at each IoU threshold t ∈ {0.3, 0.4, 0.5, 0.6, 0.7} (L60):
   `tp = matched`, `fp = n_pred − tp`, `fn = n_gt − tp` (L511-514); F1 = 2tp/(2tp+fp+fn);
   **`spell_f1_mean` = unweighted mean of the five F1s** (L539, L679).
-- It is **set-level precision+recall pooled over all possessions** — *not* a per-GT-possession
-  score averaged over GT possessions, and there is no per-possession IoU average. Consequence:
+- It's **set-level precision+recall pooled over all possessions** — *not* a per-GT-possession
+  score averaged over GT possessions, and there's no per-possession IoU average. Consequence:
   tp(t) is non-increasing in t, so F1(t) = 2tp/(n_gt+n_pred) is a **constant × tp**, i.e. the
   mean over thresholds is `0.2 × Σ_t 2·tp(t)/(n_gt+n_pred)` — leverage concentrates entirely
   on *how many* GT spells stay matched at *each* IoU rung.
-- Runs are on the filled prediction (L671), so after fill there is no X left inside runs: X
+- Runs are on the filled prediction (L671), so after fill there's no X left inside runs: X
   cannot fragment spells for the ranking metric.
 
 ### 1.5 Ranking & tie-breaks (`run_evaluation.py`)
@@ -122,6 +125,10 @@ split that destroys a match removes 2 from the numerator while n_gt+n_pred grows
 **Cheap (absorbed):** boundary timing error of a few frames; containment/overhang of one team's
 spell; abstention *inside* a possession (free for spellF1, charged fully by macroF1 — the two
 metrics disagree maximally here).
+
+I was surprised that X-on-interior is literally free for spellF1. The forward-fill just
+carries the previous label through, so the spell never breaks. macroF1 takes the hit
+instead — but macroF1 is only a tie-break, so that's fine.
 
 **Catastrophic:** any error that **splits one GT possession into two predicted spells**
 (a single-frame wrong-team or wrong-alive blip anywhere in a possession halves the possible
@@ -226,9 +233,14 @@ official `pm.evaluate`-equivalent paths. Headline results are the table in §3.1
 window, `mtah-2027/` untouched. Per EVALUATION.md and RULES.md the public window is for
 correctness checks only.
 
+**Transition-latency grid.** I measured it on GT metrics to see whether the known ~+4.6 s
+delay was fixable. Five candidates, none worked. Reverted everything. The grid sits in
+`tests/_results/transition_latency_grid.json` if anyone's curious — it's a record of what
+didn't work, not a tuning backdoor.
+
 ## Known gaps
 
-- The private full-match GT was not available, so all absolute spellF1 values are public-window
+- The private full-match GT wasn't available, so all absolute spellF1 values are public-window
   illustrations; per-split full-match cost is given by the `≈1/N` identity, not measured.
 - Greedy-vs-bipartite divergence was reasoned from code (L492-508) but no adversarial overlap
   web was constructed to exhibit a concrete loss; expected to be rare given same-team filtering.

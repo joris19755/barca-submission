@@ -1,5 +1,8 @@
 # Data audit: signals the pipeline does not exploit yet
 
+Before building anything I wanted to know what signals I was ignoring. Here's the full
+inventory.
+
 Analysis only — no pipeline changes. Scope: everything in the match bundle
 (`./data/` flat files; `./mtah-data/` symlink bundle) compared against what
 `possessed/pipeline.py` actually consumes (tactical ATD ball + player positions with
@@ -23,7 +26,7 @@ cannot be exploited, with reason.
 ### 1.1 Full breakdown, code × Type
 
 | code | Type | n | total s | median s |
-|---|---|---:|---:|---:|
+|---|---:|---:|---:|---:|
 | PLAYERS IN THE BOX | — | 97 | 3,444.0 | 27.7 |
 | BALL IN FINAL THIRD | — | 93 | 2,800.5 | 27.0 |
 | BALL IN THE BOX | — | 72 | 1,303.3 | 17.4 |
@@ -49,7 +52,7 @@ length — the codes are concurrent phases, not a partition).
 
 ### 1.2 What the pipeline uses vs ignores
 
-Used: `SET PIECES` (59, all six Types) and `GOALS` (4). That is **63/638 = 9.9% of
+Used: `SET PIECES` (59, all six Types) and `GOALS` (4). That's **63/638 = 9.9% of
 instances and 15.5% of tagged time**. The other **575 instances / 14,502 s (84.5%) of
 tagged time are untouched.**
 
@@ -143,7 +146,11 @@ Coverage arithmetic *if* aligned (naive, unaligned shares only): broadcast ball 
 visible on 50.5% of its own frames vs tactical 56.9% — broadcast would *not* be a
 strict superset; it could at best add frames where its 50.5% overlaps tactical's 43.1%
 missingness, upper-bounded by roughly the product under independence (~21% of tactical
-frames), but this cannot be quantified without the piecewise map.
+frames), but this can't be quantified without the piecewise map.
+
+**Tried constant-offset alignment. Best I got was 0.53 correlation at −160 s, which
+is not good enough. Piecewise event-anchored matching is what it needs, but I'd need
+a week, and I don't have one.**
 
 ---
 
@@ -207,7 +214,7 @@ Per-frame ATD line: `frame_id : 46×(x, y, speed_m/s) : ball(x, y, speed_m/s)` �
 - **Jersey/team:** no identities; team via meta (`Barcelona` first team, 24 slots;
   `Atletic Club`, 22 slots) — pipeline already uses this. **Keeper detection: yes,
   meta `position_type` = `Goalkeeper` on Track 24 (Bar) and Track 46 (Ath) only —
-  unused today, enables “nearest outfield player” and keeper-zone features.**
+  unused today, enables "nearest outfield player" and keeper-zone features.**
 - **Homography validity:** tactical **100.00% (199,319/199,319)**; broadcast 65.81%
   (108,248/164,488) in **123 invalid stretches, median 279 fr, max 2,719 fr**.
 - **Pitch-space features now computable [USABLE NOW]:** metric distances (pitch
@@ -243,19 +250,23 @@ Per-frame ATD line: `frame_id : 46×(x, y, speed_m/s) : ball(x, y, speed_m/s)` �
    the attacking member as a soft possession vote at transitions (ATTACKING/DEFENSIVE
    TRANSITION pairs sit exactly on turnovers, ball visible 87–88%) attacks spellF1
    directly — transition timing is where spellF1 lives. **[USABLE NOW]**
+   If I had another week, #1 is the phase intervals — 68% of graded frames already name
+   the ball side through paired codes. Free prior.
+
 2. **Pitch-space dynamics from fields we already parse: ball speed, metric geometry,
    numerical superiority (unequal on 69.7% of frames), GK exclusion, attack direction.**
    Turns the raw nearest-player guess into a state with hysteresis informed by who
    actually has the better ball-side structure; directly reduces possession churn that
    splits spells. **[USABLE NOW]**
+
 3. **Spatial/density tags: `Max Players in the box` (45.7% of graded), `Side` flank
    entry (36.9%), `Direction of ball entry`** — free location+pressure context for the
    ambiguous frames (box scrambles, occlusions) where nearest-player flips. **[USABLE
    NOW]** Broadcast coverage (§2) would be ranked second if a piecewise alignment were
-   cheap — it is not: **[NEEDS ALIGNMENT, sprint-sized sub-project]**
+   cheap — it's not: **[NEEDS ALIGNMENT, sprint-sized sub-project]**
 
 *Known gaps in this audit:* cross-correlation used 1-s ball-x/visibility bins, not full
 player-trajectory correlation (player-level cross-corr skipped for budget); broadcast
-“added coverage where tactical ball missing” left as an independence upper-bound
+"added coverage where tactical ball missing" left as an independence upper-bound
 because no simple alignment exists (§2); no evaluation of phase-interval overlap with
 the public 5-minute GT beyond coverage shares.

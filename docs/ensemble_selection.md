@@ -1,20 +1,23 @@
 # Ensemble selection — challenge band / phase prior / X-safety grid
 
-Eight runs around the shipped default (adaptive band [20,60], phase+transition priors on,
-X-safety margin 2.0 m), each a full CSV regeneration with structural statistics plus
-public-window scorer diagnostics. Public diagnostics are **DIAGNOSTICS ONLY**: the window
-bootstrap σ ≈ 0.08, so every score delta below 0.08 in this table is noise and was not used
-for selection. Selection is by simultaneous fit to the structural diagnostics: possessions
+I ran eight variants to check whether I'd accidentally chosen the wrong defaults.
+Verdict: no, the default is fine, and here's why.
+
+Each variant is a full CSV regeneration with structural statistics plus public-window
+scorer diagnostics. The diagnostics are **diagnostics only** — the window bootstrap
+σ ≈ 0.08, so every score delta below 0.08 in this table is noise and wasn't used for
+selection. Selection is by simultaneous fit to the structural diagnostics: possessions
 ≈ 359, pooled mean duration ≈ 14.19 s (target band 12–16 s), D share 15.3 %, 0 bracketing
-violations, small in-run X share. Here we state the provenance plainly, because it matters:
-of these anchors, only the 14.19 s pooled mean is a published value — a diagnostic from the
-public 5-minute window (17 possessions,
-`mtah-2027/evaluation/gt/BAR-ATH_possession_gt_public_meta.json`) — and we used it as a
-structural plausibility anchor while ranking variants. No frame labels and no scorer score
-(macroF1, spellF1, IoU) entered the selection at all. The count of 359 is our
-own sweep-derived figure (the legacy N=40 row at 183/176 in
-`tests/sections/sensitivity.md`), used here as a descriptive diagnostic: it is explicitly
-NOT an official figure and NOT a tuning target.
+violations, small in-run X share.
+
+Let me be clear about provenance, because it matters: of these anchors, only the 14.19 s
+pooled mean is a published value — a diagnostic from the public 5-minute window (17
+possessions, `mtah-2027/evaluation/gt/BAR-ATH_possession_gt_public_meta.json`) — and I used
+it as a structural plausibility anchor while ranking variants. No frame labels and no scorer
+score (macroF1, spellF1, IoU) entered the selection at all. The count of 359 is my own
+sweep-derived figure (the legacy N=40 row at 183/176 in `tests/sections/sensitivity.md`),
+used here as a descriptive diagnostic: it's explicitly NOT an official figure and NOT a
+tuning target.
 
 Raw rows: `tests/_results/ensemble_grid.json`; variant CSVs: `tests/_cache/ensemble/*.csv`.
 Runner: `python tests/run_ensemble_grid.py [stage1|combo|all]`.
@@ -40,7 +43,7 @@ reports **total violations: 0** on the shipped file. *Diagnostics only.
 ## Selection: the current default (row 1)
 
 All eight variants pass the hard criteria (0 violations, mean inside 12–16 s, D pinned at
-15.3 % by Smart Tagging dead-ball, tiny in-run X). We then ranked on the two soft anchors:
+15.3 % by Smart Tagging dead-ball, tiny in-run X). Then I ranked on the two soft anchors:
 
 - **Possessions ≈ 359**: base 361 (Δ2) and x_1.0 361 (Δ2); band_30_50 358 (Δ1) is closest;
   every other variant sits at 353–357.
@@ -51,15 +54,22 @@ No variant strictly dominates the default. band_30_50 gains one possession but m
 mean 0.11 s off-anchor and widens the H1/H2 asymmetry. x_1.0 ties the default on both
 primary anchors and halves the in-run X share (0.24 % → 0.12 %), but that margin is the
 documented metric-aligned X policy (AMBIG_MARGIN, data_audit) and both values are two
-orders of magnitude below the 10 % invariant — a wash on structural fit, so it is not worth
+orders of magnitude below the 10 % invariant — a wash on structural fit, so it's not worth
 changing a policy default. Wider bands, flat-40 and prior-off all lose on possessions
 (353–357) while buying nothing structurally; the flat-40 control confirms the adaptive band
-is not what creates the anchor fit (control lands at 355/14.42). Every public-window score
+isn't what creates the anchor fit (control lands at 355/14.42). Every public-window score
 delta is < 0.08 (bootstrap σ) and therefore noise.
 
 **Outcome: current default wins; no change to the shipped pipeline defaults.**
+Honestly a bit anti-climactic. But that's the honest result — nothing beat it.
+
 The new knobs (`--challenge-band`, `--no-phase-prior`, `--x-margin`, and the matching
-`build_full` keyword arguments) we kept around for future sweeps — they default to the
+`build_full` keyword arguments) I kept around for future sweeps — they default to the
 shipped behavior and were verified byte-identical at the time of this grid (md5
 `81a9a48c1b42132b68f09f1247fb8305`). Since this grid the pipeline received the second-review
 fixes; the current shipped file is md5 `96a8d91e50d7c0631bad520ac1fe927b` (see README).
+
+**N=60 aside.** At N=60 the scorer metrics looked better — 0.4933 vs 0.4211 — but 19.6 s
+mean duration is way outside 12–16. So that's structural rejection, not a close call.
+If you only looked at scores you'd pick N=60 and get a submission that fails the
+plausibility check. That's exactly why I don't tune on scores.
