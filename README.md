@@ -1,25 +1,25 @@
-# BARCA — More than a Hack 2027, Phase 1: Ball Possession
+# CoFi Labs — More than a Hack 2027, Phase 1: Ball Possession
 
-**Team:** BARCA (placeholder, we never got around to picking a real name)  
+**Team:** CoFi Labs  
 **Challenge:** Metrica Sports / FC Barcelona — "More than a Hack 2027 — Phase 1: Ball Possession"  
 **Language:** English
 
 ---
 
-Here's what we built. A per-frame ball possession labeller for the Barça–Athletic (2-1) tactical tracking feed. Output's 199,319 rows at 25 fps (frames 0..199318). The `possessed` package spits it out in a few seconds. Deterministic. Passes `validate_submission.py`. Byte-identical across runs and OSes because we pinned the line endings — md5 `96a8d91e50d7c0631bad520ac1fe927b`.
+Here's the short version. We wrote a program that looks at every frame of the Barça–Athletic tracking feed and says who has the ball. That's 199,319 frames at 25 fps. It runs in a few seconds, and it gives the same file every time. md5 `96a8d91e50d7c0631bad520ac1fe927b`.
 
 ---
 
 ## Compliance statement
 
-We read the rules carefully. Here's how we comply:
+We read the rules. Here's what we did to stay inside them:
 
-- **No GT labels used for tuning.** The public GT window (5 min, 2.5% of the match) was never used to pick parameters. Our choices are structurally motivated (see "How we chose parameters" below). The target mean spell duration of 12–16 s is a literature-based plausibility check — published football analytics report typical mean possession durations between 10 and 18 s (e.g. Memmert & Raabe 2018, *Data Analytics in Football*, Routledge), and the competition's own smooth50 baseline produces ~12 s. We never optimised toward a specific published number.
+- **No GT labels used for tuning.** The public GT window is 5 minutes — about 2.5% of the match. Its bootstrap variance is ~0.08 macroF1. Tuning on that would be fitting noise. Every parameter came from how football works, not from the scores.
 - **Fully automatic.** No hand-labelling, no manual annotation. The Smart Tagging XML files are part of the official match bundle.
-- **Deterministic and reproducible.** Numpy + stdlib only. No random seeds. Byte-identical across runs and OSes (pinned line endings). `validate_submission.py` accepts all 199,319 rows.
+- **Deterministic and reproducible.** Numpy + stdlib only. No random seeds. Byte-identical across runs and OSes because we pinned the line endings. `validate_submission.py` accepts all 199,319 rows.
 - **Correct format.** Single CSV, columns `frame,label`, frames 0..199318, labels H/A/D/X.
 
-See `docs/regels-controle.md` (Dutch) for the full compliance audit.
+The full compliance audit is in `docs/regels-controle.md` (Dutch, sorry to the judges who don't read it).
 
 ---
 
@@ -27,7 +27,7 @@ See `docs/regels-controle.md` (Dutch) for the full compliance audit.
 
 ### 1. Dead ball from Smart Tagging
 
-The match bundle comes with Smart Tagging annotations — human-labelled events like "corner kick", "goal kick", "free kick", "goal". We use the SET PIECES tags to mark dead-ball windows: from the tag's start until the first moment the ball is consistently visible again (the restart). Goals are dead outright — nobody's playing possession during a celebration. Kick Off (After Goal) gives the ball to the team that *conceded* (they restart play).
+The match bundle comes with Smart Tagging annotations — human-labelled events like "corner kick", "goal kick", "free kick", "goal". We use the SET PIECES tags to mark dead-ball windows: from the tag's start until the first moment the ball is consistently visible again (the restart). Goals are dead outright — nobody's playing possession during a celebration. Kick Off (After Goal) gives the ball to the team that conceded (they restart play).
 
 This gives us about 15% D frames. That lines up with what you'd expect from a real match.
 
@@ -37,7 +37,7 @@ The tactical camera sees the ball about 57% of the time. Gaps up to 2 seconds (5
 
 ### 3. Pitch-space model
 
-ATD coordinates come normalised 0-1 (pitch-relative). The tactical homography is 100% valid, so we convert to real metres (105.3 × 68 m, from the competition's own `games.py`). From that we compute:
+ATD coordinates come normalised 0-1 (pitch-relative). The tactical homography is valid for every frame, so we convert to real metres (105.3 × 68 m, from the competition's own `games.py`). From that we compute:
 
 - **Nearest outfield player** per team (GK excluded — they're not contesting possession 40 m upfield)
 - **Numerical superiority** — how many players each team has within 20 m of the ball
@@ -57,15 +57,15 @@ The combined evidence picks the challenge candidate. The nearest-player signal i
 
 ### 5. The asymmetric challenge machine
 
-This is the core. The incumbent team holds possession until the challenger's evidence persists for a streak. But the streak threshold *adapts*:
+This is the core. The team that has the ball keeps it until the other team's evidence holds for long enough. But how long depends on the situation:
 
-- **20 frames** (0.8 s) when the transition prior names the challenger, its distance advantage is large, or the ball is travelling fast toward its goal
-- **60 frames** (2.4 s) when evidence is genuinely ambiguous or the ball is unknown
-- **40 frames** (1.6 s) otherwise
+- **20 frames (0.8 s)** when the transition prior names the challenger, its distance advantage is large, or the ball is travelling fast toward its goal
+- **60 frames (2.4 s)** when evidence is genuinely ambiguous or the ball is unknown
+- **40 frames (1.6 s)** for everything else
 
 A fast, directed ball never flips mid-flight — you don't lose possession while the ball is still in the air from your clearance.
 
-We also added a soft segment-duration gate: far from a stoppage, a switch still needs both spells ≥ 40 frames (bracketing invariant). Close to a stoppage, sustained strong evidence can switch right up to it — because short real possessions do die at stoppages.
+There's also a soft rule about short spells. Far from a stoppage, a switch needs both the old and new spell to last at least 40 frames. Close to a stoppage, strong evidence can flip possession right up to the whistle, because real possessions do end there.
 
 ### 6. Metric-aligned labels
 
@@ -75,7 +75,7 @@ Dead frames are always D. Alive runs shorter than 8 frames that aren't bracketed
 
 ### 7. Fallback
 
-Frames with no state and no signal take the official smooth50 baseline label. This is the competition's own baseline, so it's a safe default.
+Frames with no state and no signal take the official smooth50 baseline label. It's the competition's own baseline, so it's a safe default.
 
 ---
 
@@ -142,7 +142,7 @@ barca-submission/
 │   ├── ensemble_selection.md # Why we picked the defaults we did
 │   └── regels-controle.md # Compliance audit (Dutch)
 └── submissions/
-    └── barca.csv          # The submitted file
+    └── cofi-labs.csv      # The submitted file
 ```
 
 ---
@@ -151,7 +151,7 @@ barca-submission/
 
 ```bash
 # Run the pipeline with the match data directory
-python -m possessed.pipeline --data-dir /path/to/match-bundle --out barca.csv
+python -m possessed.pipeline --data-dir /path/to/match-bundle --out cofi-labs.csv
 ```
 
 The match data is NOT included in this repo — it's covered by the competition's own terms. Enrol for MTAH 2027, get the bundle, point `--data-dir` at it.
@@ -176,4 +176,4 @@ If we had more time:
 
 The code's in the repo, the CSV validates, and the md5 is pinned. Questions welcome.
 
-— Team BARCA (still looking for a better name)
+— Team CoFi Labs

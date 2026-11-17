@@ -1,6 +1,6 @@
-# BARCA: More than a Hack 2027, Phase 1 (Ball Possession)
+# CoFi Labs: More than a Hack 2027, Phase 1 (Ball Possession)
 
-**Team:** BARCA (placeholder name, we never got around to picking a real one)
+**Team:** CoFi Labs
 **Challenge:** Metrica Sports / FC Barcelona, "More than a Hack 2027, Phase 1: Ball Possession"
 **Language:** English
 
@@ -10,9 +10,9 @@
 
 We wrote a program that looks at every frame of the Barça–Athletic tracking feed and says who has the ball: H (home), A (away), D (dead ball) or X (we don't know). That's 199,319 frames at 25 fps. It runs in a few seconds, and it gives the same file every time.
 
-## The rules we followed
+## How we stayed inside the rules
 
-We kept to the rules as written. A few things you'll notice:
+We stuck to the rules. A few things you'll notice:
 
 - We didn't tune anything on the public ground-truth window. That window is only five minutes long, about 2.5% of the match, so picking settings to fit it would mostly mean fitting noise. Every setting came from how football works, not from the scores.
 - Nothing was labelled by hand. The input is the official Smart Tagging and tracking files from the match bundle.
@@ -95,11 +95,13 @@ We also looked at whether mean possession length came out in a sensible range. T
 
 **Determinism took more care than we expected.** We pinned the line endings (`newline="\n"`, `lineterminator="\n"`), so the file comes out the same on every machine.
 
+The emphasis on traceable data, contextual interpretation and clear reporting also informs our work on AthletIQ, an athlete intelligence platform.
+
 ## What we'd try next
 
 1. Use more Smart Tagging signals. `docs/data_audit.md` lists a few we skipped, such as players-in-the-box timing and substitution windows.
 2. Handle long blind spots better. Linear fill works, but even a simple Kalman filter would probably do better.
-3. Hold out one half for validation. The two halves are independent, so tuning on one and checking on the other would have been a cleaner test. We kept the pipeline blind to the ground truth, so we didn't do it, but in hindsight it would have caught a few things.
+3. Hold out one half for validation. The two halves are independent, so tuning on one and checking on the other would have been a cleaner test. We kept the pipeline blind to the ground truth, so we didn't do it, but looking back it would have caught a few things.
 4. Push X harder around transitions. Transition frames are where most of the errors live, and the scorer rewards keeping spells whole.
 
 ## Code and reproduction
@@ -108,9 +110,9 @@ The code is in `possessed/pipeline.py`, with tests in `tests/`. The match data i
 
 ```bash
 export MTAH_DATA_DIR=/path/to/match-bundle
-python -m possessed.pipeline --out barca.csv
+python -m possessed.pipeline --out cofi-labs.csv
 ```
 
 The code's in the repo, the CSV validates, and we pinned the output. Questions welcome.
 
-Team BARCA (still looking for a better name)
+— Team CoFi Labs

@@ -9,6 +9,7 @@ mtah-data/
 
 # Generated outputs — regenerate with the README command instead
 *.csv
+!cofi-labs.csv
 submissions/
 
 # Python
