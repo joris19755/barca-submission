@@ -176,4 +176,4 @@ If we had more time:
 
 The code's in the repo, the CSV validates, and the md5 is pinned. Questions welcome.
 
-— Team CoFi Labs
+— Team CoFi Labs (Part of Jokay Solutions the company behind AthletIQ)
