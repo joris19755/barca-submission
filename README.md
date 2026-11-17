@@ -6,15 +6,15 @@
 
 ---
 
-So here's what we built. A per-frame ball possession labeller for the Barça–Athletic (2-1) tactical tracking feed. Output's 199,319 rows at 25 fps (frames 0..199318), the `possessed` package spits it out in a few seconds, deterministic. Passes `validate_submission.py`, byte-identical across runs and OSes because we pinned the line endings — md5 `96a8d91e50d7c0631bad520ac1fe927b`.
+Here's what we built. A per-frame ball possession labeller for the Barça–Athletic (2-1) tactical tracking feed. Output's 199,319 rows at 25 fps (frames 0..199318). The `possessed` package spits it out in a few seconds. Deterministic. Passes `validate_submission.py`. Byte-identical across runs and OSes because we pinned the line endings — md5 `96a8d91e50d7c0631bad520ac1fe927b`.
 
 ---
 
 ## Compliance statement
 
-We've read the rules carefully. Here's how we comply:
+We read the rules carefully. Here's how we comply:
 
-- **No GT labels used for tuning.** The public GT window (5 min, 2.5% of the match) was never used to select parameters. Our parameter choices are structurally motivated (see "How we chose parameters" below). The target mean spell duration of 12–16 s is a literature-based plausibility check — published football analytics report typical mean possession durations between 10 and 18 s (e.g. Memmert & Raabe 2018, *Data Analytics in Football*, Routledge), and the competition's own smooth50 baseline produces ~12 s. We never optimised toward a specific published number.
+- **No GT labels used for tuning.** The public GT window (5 min, 2.5% of the match) was never used to pick parameters. Our choices are structurally motivated (see "How we chose parameters" below). The target mean spell duration of 12–16 s is a literature-based plausibility check — published football analytics report typical mean possession durations between 10 and 18 s (e.g. Memmert & Raabe 2018, *Data Analytics in Football*, Routledge), and the competition's own smooth50 baseline produces ~12 s. We never optimised toward a specific published number.
 - **Fully automatic.** No hand-labelling, no manual annotation. The Smart Tagging XML files are part of the official match bundle.
 - **Deterministic and reproducible.** Numpy + stdlib only. No random seeds. Byte-identical across runs and OSes (pinned line endings). `validate_submission.py` accepts all 199,319 rows.
 - **Correct format.** Single CSV, columns `frame,label`, frames 0..199318, labels H/A/D/X.
@@ -27,9 +27,9 @@ See `docs/regels-controle.md` (Dutch) for the full compliance audit.
 
 ### 1. Dead ball from Smart Tagging
 
-The match bundle comes with Smart Tagging annotations — human-labelled events like "corner kick", "goal kick", "free kick", "goal". We use the SET PIECES tags to mark dead-ball windows: from the tag's start until the first moment the ball is consistently visible again (the restart). Goals are dead outright — nobody's playing possession during a celebration. Kick Off (After Goal) gets the team that *conceded* the goal (they restart play).
+The match bundle comes with Smart Tagging annotations — human-labelled events like "corner kick", "goal kick", "free kick", "goal". We use the SET PIECES tags to mark dead-ball windows: from the tag's start until the first moment the ball is consistently visible again (the restart). Goals are dead outright — nobody's playing possession during a celebration. Kick Off (After Goal) gives the ball to the team that *conceded* (they restart play).
 
-This gives us about 15% D frames, which lines up with what you'd expect from a real match.
+This gives us about 15% D frames. That lines up with what you'd expect from a real match.
 
 ### 2. Ball interpolation
 
