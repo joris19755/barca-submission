@@ -52,7 +52,6 @@ This is where it gets interesting. Instead of just looking at which player is cl
 - **Superiority term**: more players near the ball = more likely to have it
 - **Phase votes**: Smart Tagging also labels phases like "progression", "creating chances", "attacking transition" — the attacking side of these intervals gets a soft vote
 - **Box votes**: "players in the box" tags add a small attacking-side nudge (scramble context)
-- **Turnover signal**: when the ball reverses direction and decelerates sharply, that's a turnover — the gaining team gets a boost
 
 The combined evidence picks the challenge candidate. The nearest-player signal is only the tie-break when evidence is tied.
 
@@ -60,8 +59,8 @@ The combined evidence picks the challenge candidate. The nearest-player signal i
 
 This is the core. The incumbent team holds possession until the challenger's evidence persists for a streak. But the streak threshold *adapts*:
 
-- **15 frames** (0.6 s) when the transition prior names the challenger, its distance advantage is large, the ball is travelling fast toward its goal, or a turnover signal fires
-- **50 frames** (2.0 s) when evidence is genuinely ambiguous or the ball is unknown
+- **20 frames** (0.8 s) when the transition prior names the challenger, its distance advantage is large, or the ball is travelling fast toward its goal
+- **60 frames** (2.4 s) when evidence is genuinely ambiguous or the ball is unknown
 - **40 frames** (1.6 s) otherwise
 
 A fast, directed ball never flips mid-flight — you don't lose possession while the ball is still in the air from your clearance.
@@ -70,7 +69,7 @@ We also added a soft segment-duration gate: far from a stoppage, a switch still 
 
 ### 6. Metric-aligned labels
 
-When the evidence is genuinely ambiguous (both teams within 3 m, no numerical advantage), we emit X instead of a coin flip. This keeps the spell intact (forward-fill in the scorer) and doesn't penalise us for being honest about uncertainty.
+When the evidence is genuinely ambiguous (both teams within 2 m, no numerical advantage), we emit X instead of a coin flip. This keeps the spell intact (forward-fill in the scorer) and doesn't penalise us for being honest about uncertainty.
 
 Dead frames are always D. Alive runs shorter than 8 frames that aren't bracketed by D or the graded edge become X (blip killer).
 
@@ -90,7 +89,7 @@ Parameters were chosen structurally, based on football common sense and literatu
 |---|---|---|
 | CHALLENGE_N | 40 frames (1.6 s) | How long a team needs to establish clear control — feels right for the pace of professional football |
 | MAX_GAP | 50 frames (2 s) | Long enough to bridge most occlusions, short enough not to hallucinate |
-| AMBIG_MARGIN | 3.0 m | Two players within 3 m of the ball with no numerical advantage is genuinely ambiguous |
+| AMBIG_MARGIN | 2.0 m | Two players within 2 m of the ball with no numerical advantage is genuinely ambiguous |
 | ADV_LARGE | 8.0 m | A clear distance advantage that shortens the challenge window |
 | Target mean spell | 12–16 s | Literature-based plausibility check: published football analytics report typical mean possession durations between 10 and 18 s (Memmert & Raabe 2018); the competition's own smooth50 baseline produces ~12 s |
 
@@ -102,7 +101,7 @@ We ran a sensitivity sweep (see `tests/sections/sensitivity.md`) to understand h
 
 ### The nearest-player signal is surprisingly noisy
 
-The simplest approach — "whoever has the closest player has the ball" — gives you about 57% accuracy on the public window. That's barely above the smooth50 baseline. The problem is that the nearest player is often running *toward* the ball, not *with* it. By combining distance with numerical superiority, phase context, and turnover signals, we get a much more stable picture.
+The simplest approach — "whoever has the closest player has the ball" — gives you about 57% accuracy on the public window. That's barely above the smooth50 baseline. The problem is that the nearest player is often running *toward* the ball, not *with* it. By combining distance with numerical superiority and phase context, we get a much more stable picture.
 
 ### Smart Tagging is underused
 
@@ -129,7 +128,6 @@ The competition requires byte-identical output across runs. We pinned line endin
 barca-submission/
 ├── README.md              # This file (short version)
 ├── LICENSE                # MIT
-├── barca.csv              # The submission file (byte-identical to submissions/barca.csv)
 ├── possessed/
 │   ├── __init__.py
 │   └── pipeline.py        # The whole pipeline, ~1200 lines
@@ -152,14 +150,11 @@ barca-submission/
 ## How to run
 
 ```bash
-# Set the data directory
-export MTAH_DATA_DIR=/path/to/match-bundle
-
-# Run the pipeline
-python -m possessed.pipeline --out barca.csv
+# Run the pipeline with the match data directory
+python -m possessed.pipeline --data-dir /path/to/match-bundle --out barca.csv
 ```
 
-The match data is NOT included in this repo — it's covered by the competition's own terms. Enrol for MTAH 2027, get the bundle, point `MTAH_DATA_DIR` at it.
+The match data is NOT included in this repo — it's covered by the competition's own terms. Enrol for MTAH 2027, get the bundle, point `--data-dir` at it.
 
 ---
 

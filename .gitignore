@@ -8,9 +8,8 @@ mtah-data/
 *_homography.csv
 
 # Generated outputs — regenerate with the README command instead
-# barca.csv IS committed (it's the submission file)
 *.csv
-!barca.csv
+submissions/
 
 # Python
 .venv/
