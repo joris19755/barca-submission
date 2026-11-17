@@ -115,4 +115,4 @@ python -m possessed.pipeline --out cofi-labs.csv
 
 The code's in the repo, the CSV validates, and we pinned the output. Questions welcome.
 
-— Team CoFi Labs
+— Team CoFi Labs (Part of Jokay Solutions, the company behind AthletIQ)
